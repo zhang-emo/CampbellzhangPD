@@ -4,15 +4,13 @@
     const Q = id => document.getElementById(id);
     const ma = Q('ma'), mi = Q('mi'), snd = Q('snd'), qb = Q('qb'), qbt = Q('qbt'), qbx = Q('qbx'), st = Q('st'), sm = Q('sm'), sp = Q('sp'), bk = Q('bk'), cn = Q('cn'), mn = Q('mn'), ctn = Q('ctn'), rs = Q('rs'), rsv = Q('rsv'), at = Q('at'), ai = Q('ai'), aiv = Q('aiv'), air = Q('air'), et = Q('et'), ap = Q('ap'), mu = Q('mu'), ctu = Q('ctu');
     let rTimer = null, aTimer = null, rDelay = 3000, aMin = 10, statusTimer = null;
-    let typingCount = 0;
     let isQaReplying = false, qaQueue = [], currentQaTimer = null;
     let textCards = [], emojiCards = [], imageCards = [], statusCards = [], groups = [{ id: 'default', name: '未分组', color: '#90943f' }], chatStickers = [];
     textCards = [];
     let currentTab = 'text', currentGroupFilter = 'default';
     let groupBarCollapsed = false;
     const contactStatusEl = Q('contactStatus');
-    const statusDotEl = Q('statusDot');
-    let previousStatusText = '在线';
+    let currentStatusText = '在线';
     let isSending = false;
     let ignoreNextClick = false;
     const wp = Q('wp'), wbBack = Q('wbBack'), wbSearch = Q('wbSearch'), tabs = document.querySelectorAll('.tab'), cardList = Q('cardList'), groupBar = Q('groupBar'), wbImportText = Q('wbImportText'), wbUploadImg = Q('wbUploadImg'), wbExport = Q('wbExport'), wbImportJSON = Q('wbImportJSON'), importArea = Q('importArea'), importTextArea = Q('importTextArea'), confirmImport = Q('confirmImport'), cancelImport = Q('cancelImport'), imgUploadInput = Q('imgUploadInput'), jsonUploadInput = Q('jsonUploadInput');
@@ -166,21 +164,21 @@
     }
     /* --------------------------- */
 
-    function showTyping() {
-        if (typingCount === 0) {
-            previousStatusText = contactStatusEl.textContent;
-        }
-        typingCount++;
-        contactStatusEl.textContent = '对方正在输入...';
-        if (statusDotEl) statusDotEl.classList.add('typing');
+    function isAnyReplyActive() {
+        return !!(rTimer || rapidReplyActive || isQaReplying || currentQaTimer);
     }
-    function hideTyping() {
-        typingCount = Math.max(0, typingCount - 1);
-        if (typingCount === 0) {
-            contactStatusEl.textContent = previousStatusText;
-            if (statusDotEl) statusDotEl.classList.remove('typing');
+
+    function renderStatusUI() {
+        if (!contactStatusEl) return;
+        if (isAnyReplyActive()) {
+            contactStatusEl.textContent = '对方正在输入...';
+        } else {
+            contactStatusEl.textContent = currentStatusText || '在线';
         }
     }
+
+    function showTyping() { renderStatusUI(); }
+    function hideTyping() { renderStatusUI(); }
     function updateNightUI() { 
         const sunSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`;
         const moonSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`;
@@ -235,7 +233,7 @@
 
     loadAllData().then(() => {
         setInterval(saveAllData, 5000); // 加载完成后再启动定时保存
-        updateContactStatus();
+        updateContactStatus(true);
         checkScheduledReplies();
         render(); updSlider(); applySet();
     });
@@ -262,18 +260,19 @@
         reader.readAsDataURL(file);
     }
 
-    function updateContactStatus() {
-        if (statusCards.length > 0) {
-            const newStatus = statusCards[Math.floor(Math.random()*statusCards.length)].content;
-            if (typingCount > 0) { previousStatusText = newStatus; }
-            else { contactStatusEl.textContent = newStatus; }
+    function updateContactStatus(forcePick = false) {
+        if (statusCards && statusCards.length > 0) {
+            if (forcePick || !statusCards.some(c => c.content === currentStatusText)) {
+                const picked = statusCards[Math.floor(Math.random() * statusCards.length)].content;
+                currentStatusText = picked;
+            }
         } else {
-            if (typingCount === 0) { contactStatusEl.textContent = '在线'; }
-            else { previousStatusText = '在线'; }
+            currentStatusText = '在线';
         }
+        renderStatusUI();
         clearTimeout(statusTimer);
         const nextDelay = Math.floor(Math.random() * 8 * 3600000) + 3600000;
-        statusTimer = setTimeout(updateContactStatus, nextDelay);
+        statusTimer = setTimeout(() => updateContactStatus(true), nextDelay);
     }
 
     function getRandomReply() {
@@ -314,8 +313,7 @@
         rTimer = aTimer = rapidReplyTimer = currentQaTimer = null; 
         rapidReplyActive = false;
         isQaReplying = false;
-        typingCount = 0;
-        if (contactStatusEl) contactStatusEl.textContent = previousStatusText || '在线';
+        renderStatusUI();
     }
     function startAuto() { if (aTimer) clearInterval(aTimer); aTimer = setInterval(() => { if (!at.checked) return; sendRapidReplies(); }, aMin * 60000); }
 
@@ -330,10 +328,11 @@
     function processQaReply(qaItem) {
         if (!qaItem) return;
         isQaReplying = true;
-        showTyping();
+        renderStatusUI();
         currentQaTimer = setTimeout(() => {
             currentQaTimer = null;
-            hideTyping();
+            isQaReplying = false;
+            renderStatusUI();
             const picked = Math.random() < 0.5 ? qaItem.a : qaItem.b;
             let replyText = `我选择：${picked}`;
             if (et && et.checked && emojiCards.length && Math.random() < 0.5) {
@@ -351,13 +350,12 @@
             msgs.push(replyMsg);
             render();
             saveAllData();
-            isQaReplying = false;
             checkNextQueue();
         }, rDelay);
     }
 
     function sendRapidReplies() {
-        if (rapidReplyActive) { clearTimeout(rapidReplyTimer); rapidReplyActive = false; }
+        if (rapidReplyActive) { clearTimeout(rapidReplyTimer); rapidReplyActive = false; rapidReplyTimer = null; }
         rapidReplyActive = true;
         const rand = Math.random();
         const total = rand < 0.6 ? 1 : (rand < 0.9 ? 2 : 3);
@@ -366,12 +364,13 @@
             if (count >= total || !rapidReplyActive) { 
                 rapidReplyActive = false; 
                 rapidReplyTimer = null;
+                renderStatusUI();
                 checkNextQueue();
                 return; 
             }
-            showTyping();
+            renderStatusUI();
             rapidReplyTimer = setTimeout(() => {
-                hideTyping();
+                rapidReplyTimer = null;
                 const msgObj = getRandomReplyMessage();
                 if (msgObj) {
                     const msg = { id: nid++, senderId: CT, text: msgObj.content, timestamp: Date.now(), status: 'read' };
@@ -385,6 +384,7 @@
                 } else {
                     rapidReplyActive = false;
                     rapidReplyTimer = null;
+                    renderStatusUI();
                     checkNextQueue();
                 }
             }, rDelay);
@@ -398,9 +398,9 @@
 
     function simReply() {
         if (rTimer) clearTimeout(rTimer);
-        showTyping();
         rTimer = setTimeout(() => {
-            hideTyping();
+            rTimer = null;
+            renderStatusUI();
             const msgObj = getRandomReplyMessage();
             if (msgObj) {
                 const msg = { id: nid++, senderId: CT, text: msgObj.content, timestamp: Date.now(), status:'read' };
@@ -408,9 +408,9 @@
                 maybeAttachQuote(msg);
                 msgs.push(msg); render(); saveAllData();
             }
-            rTimer = null;
             checkNextQueue();
         }, rDelay);
+        renderStatusUI();
     }
     function updSlider() { let v = parseInt(rs.value); rsv.textContent = Math.floor(v/10)+'秒'; rDelay = v*100; let m = parseInt(ai.value); aiv.textContent = m+'分钟'; aMin = m }
     rs.oninput = updSlider; ai.oninput = updSlider; at.onchange = () => { ai.disabled = !at.checked; air.style.opacity = at.checked ? '1' : '.5' }
@@ -711,8 +711,7 @@
         let txtFull = `${txt?`.c,.cn,.st,.si,.pt,.sl,.ir label,.mb,.mi,.tab,.btn,.group-tag,.card-content,.ab,.new-group-btn,.circle-btn,.call-btn,.img-btn,.sticker-btn,.rapid-reply-btn,.ext-toggle-btn,.ext-icon,.bb,.qbt,.message-time,.setting-label,.search-box,.color-row span,.history-msg .meta,.history-msg .preview,.bf,.tr label,.sr span,.font-slider span,.kp .sg div,.import-area div,.eh,.kp .sg div span,.sticker-panel .add-sticker-btn,.msg-system,.mailbox-tab,.group-export-btn,.group-toggle-btn{color:${txt}!important}.mi::placeholder,.search-box::placeholder,textarea::placeholder{color:${txt}99}.qp,.qt{color:${txt}cc!important}.eh{color:${txt}88!important}`:''}`;
         let avatarExtra = `.av{background:${mainBg}!important}.call-avatar{background:${mainBg}!important}`;
         let callExtra = `.call-header{background:${headerBg}!important}.call-window{background:${mainBg}!important}.call-minimized-bar{background:${headerBg}!important}`;
-        let statusFontSize = Math.max(11, fontSize - 4);
-        style.textContent = `body{background:${bodyBg}!important}.c,.ma,.sp,.wp,.tp,.hp,.kp,.mp{background:${mainBg}!important}.h{background:${headerBg}!important}.ia{background:${inputBg}!important}.btn,.circle-btn,.au,.new-group-btn,.snd,.call-btn,.img-btn,.sticker-btn,.rapid-reply-btn,.ext-toggle-btn,.ext-icon,.ap,#applyThemeBtn,.group-export-btn,.group-toggle-btn{background:${btnBg}!important}.btn:hover,.circle-btn:hover,.au:hover,.new-group-btn:hover,.snd:hover,.call-btn:hover,.img-btn:hover,.sticker-btn:hover,.rapid-reply-btn:hover,.ext-toggle-btn:hover,.ext-icon:hover,.ap:hover,#applyThemeBtn:hover,.group-export-btn:hover,.group-toggle-btn:hover{filter:brightness(0.85)!important}.tab,.mailbox-tab{background:${btnBg}90}.tab.active,.mailbox-tab.active{background:${accent}!important}.group-tag{background:${btnBg}70}.mb{background:${contactBubble}!important}.r .mb{background:${myBubble}!important}${txtFull}${nightExtra}${avatarExtra}${callExtra}.c .cn,.c .si,.c .pt,.c .sl,.c .ir label,.c .mb,.c .mi,.c .tab,.c .btn,.c .group-tag,.c .card-content,.c .ab,.c .new-group-btn,.c .circle-btn,.c .call-btn,.c .img-btn,.c .sticker-btn,.c .rapid-reply-btn,.c .ext-toggle-btn,.c .ext-icon,.c .bb,.c .qbt,.c .message-time,.c .setting-label,.c .search-box,.c .mailbox-tab,.c .group-export-btn,.c .group-toggle-btn{font-size:${fontSize}px!important}.c .st{font-size:${statusFontSize}px!important}`
+        style.textContent = `body{background:${bodyBg}!important}.c,.ma,.sp,.wp,.tp,.hp,.kp,.mp{background:${mainBg}!important}.h{background:${headerBg}!important}.ia{background:${inputBg}!important}.btn,.circle-btn,.au,.new-group-btn,.snd,.call-btn,.img-btn,.sticker-btn,.rapid-reply-btn,.ext-toggle-btn,.ext-icon,.ap,#applyThemeBtn,.group-export-btn,.group-toggle-btn{background:${btnBg}!important}.btn:hover,.circle-btn:hover,.au:hover,.new-group-btn:hover,.snd:hover,.call-btn:hover,.img-btn:hover,.sticker-btn:hover,.rapid-reply-btn:hover,.ext-toggle-btn:hover,.ext-icon:hover,.ap:hover,#applyThemeBtn:hover,.group-export-btn:hover,.group-toggle-btn:hover{filter:brightness(0.85)!important}.tab,.mailbox-tab{background:${btnBg}90}.tab.active,.mailbox-tab.active{background:${accent}!important}.group-tag{background:${btnBg}70}.mb{background:${contactBubble}!important}.r .mb{background:${myBubble}!important}${txtFull}${nightExtra}${avatarExtra}${callExtra}.c .cn,.c .st,.c .si,.c .pt,.c .sl,.c .ir label,.c .mb,.c .mi,.c .tab,.c .btn,.c .group-tag,.c .card-content,.c .ab,.c .new-group-btn,.c .circle-btn,.c .call-btn,.c .img-btn,.c .sticker-btn,.c .rapid-reply-btn,.c .ext-toggle-btn,.c .ext-icon,.c .bb,.c .qbt,.c .message-time,.c .setting-label,.c .search-box,.c .mailbox-tab,.c .group-export-btn,.c .group-toggle-btn{font-size:${fontSize}px!important}`
     }
     fontSizeSlider.oninput = () => { fontSizeValue.textContent = fontSizeSlider.value + 'px' };
     applyThemeBtn.onclick = () => { if (isNight) { isNight = false; localStorage.setItem('nightMode', 'false'); updateNightUI(); } applyTheme(); tp.classList.remove('show') };
@@ -987,7 +986,7 @@
         let arr = getCardArrByType(type);
         if (arr.some(c => c.content === content)) { customAlert('内容重复'); return false }
         arr.push({ id: Date.now()+Math.random(), content, groupId: (type==='text'||type==='status')?groupId:undefined });
-        if (type === 'status') updateContactStatus();
+        if (type === 'status') updateContactStatus(true);
         renderWB(); saveAllData(); return true;
     }
     function getCardArrByType(type) { if (type==='text') return textCards; if (type==='emoji') return emojiCards; if (type==='image') return imageCards; if (type==='status') return statusCards; return []; }
@@ -995,8 +994,8 @@
         let arr = getCardArrByType(type); 
         let idx = arr.findIndex(c => c.id == id); 
         if (idx !== -1) arr.splice(idx,1); 
-        if (type === 'status') updateContactStatus();
-        renderWB(); saveAllData();
+        if (type === 'status') updateContactStatus(true);
+        renderWB(); saveAllData(); 
     }
     function importText(text, type, groupId='default') {
         let lines = text.split('\n').map(l => l.trim()).filter(l => l);
@@ -1009,7 +1008,7 @@
             }
         });
         if (added > 0) { 
-            if (type === 'status') updateContactStatus();
+            if (type === 'status') updateContactStatus(true);
             renderWB(); saveAllData(); 
         }
         customAlert(`导入了 ${added} 条`);
@@ -1050,7 +1049,7 @@
     };
     function exportAllJSON() { let data = { text: textCards, emoji: emojiCards, image: imageCards, status: statusCards, groups }; let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wordbank.json'; a.click(); }
     wbImportJSON.onclick = () => jsonUploadInput.click();
-    jsonUploadInput.onchange = e => { let f = e.target.files[0]; if (!f) return; let r = new FileReader(); r.onload = ev => { try { let data = JSON.parse(ev.target.result); textCards = data.text || []; emojiCards = data.emoji || []; imageCards = data.image || []; statusCards = data.status || []; groups = data.groups || [{ id: 'default', name: '未分组', color: '#90943f' }]; const defaultGroup = groups.find(g => g.id === 'default'); if (defaultGroup && defaultGroup.name === 'name') defaultGroup.name = '未分组'; if (!groups.some(g => g.id === 'default')) groups.unshift({ id: 'default', name: '未分组', color: '#90943f' }); updateContactStatus(); renderWB(); saveAllData(); } catch(ex) { customAlert('无效JSON') } }; r.readAsText(f); jsonUploadInput.value = ''; };
+    jsonUploadInput.onchange = e => { let f = e.target.files[0]; if (!f) return; let r = new FileReader(); r.onload = ev => { try { let data = JSON.parse(ev.target.result); textCards = data.text || []; emojiCards = data.emoji || []; imageCards = data.image || []; statusCards = data.status || []; groups = data.groups || [{ id: 'default', name: '未分组', color: '#90943f' }]; const defaultGroup = groups.find(g => g.id === 'default'); if (defaultGroup && defaultGroup.name === 'name') defaultGroup.name = '未分组'; if (!groups.some(g => g.id === 'default')) groups.unshift({ id: 'default', name: '未分组', color: '#90943f' }); updateContactStatus(true); renderWB(); saveAllData(); } catch(ex) { customAlert('无效JSON') } }; r.readAsText(f); jsonUploadInput.value = ''; };
     cardList.addEventListener('click', e => {
         let delBtn = e.target.closest('[data-del]');
         if (delBtn) {
@@ -1073,7 +1072,7 @@
                                     renderWB(); saveAllData();
                                 });
                             } else {
-                                if (currentTab === 'status') updateContactStatus();
+                                if (currentTab === 'status') updateContactStatus(true);
                                 renderWB(); saveAllData();
                             }
                         }
@@ -1085,21 +1084,15 @@
     tabs.forEach(t => t.onclick = () => { tabs.forEach(tb => tb.classList.remove('active')); t.classList.add('active'); currentTab = t.dataset.tab; currentGroupFilter = 'all'; wbSearch.value = ''; renderWB() });
     wbSearch.oninput = renderWB;
     wbBack.onclick = () => wp.classList.remove('show');
-    updateContactStatus();
+    updateContactStatus(true);
     render(); updSlider(); applySet();
 
     function adjustLayout() {
         const c = document.querySelector('.c');
         if (!c) return;
-        if (window.innerWidth <= 600) {
-            const vpHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-            c.style.height = vpHeight + 'px';
-            c.style.transform = 'none';
-        } else {
-            const availableHeight = window.innerHeight - 32;
-            c.style.height = Math.min(availableHeight, 640) + 'px';
-            c.style.transform = 'translateY(-25px)';
-        }
+        const availableHeight = window.innerHeight - 32;
+        c.style.height = Math.min(availableHeight, 640) + 'px';
+        c.style.transform = 'translateY(-25px)';
     }
     window.addEventListener('resize', adjustLayout);
     if (window.visualViewport) { window.visualViewport.addEventListener('resize', adjustLayout); }

@@ -1,0 +1,8 @@
+{
+  "name": "Campbell and Zhangemo",
+  "description": "Customizable roleplay chat client with theme customization, card library, and history management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

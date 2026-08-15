@@ -513,7 +513,19 @@
     qbx.onclick = () => { quoteMsg = null; updQBar() };
     document.addEventListener('click', e => { if (!e.target.closest('.mb') && !e.target.closest('.ab')) document.querySelectorAll('.mactions').forEach(a => a.style.display = 'none') });
     st.onclick = e => { e.stopPropagation(); sm.classList.toggle('show') };
-    sm.addEventListener('click', e => { let it = e.target.closest('.si'); if (it) { let act = it.dataset.action; if (act === 'cs') { sm.classList.remove('show'); sp.classList.add('show') } else if (act === 'wb') { sm.classList.remove('show'); wp.classList.add('show'); renderWB() } else if (act === 'theme') { sm.classList.remove('show'); tp.classList.add('show') } else if (act === 'history') { sm.classList.remove('show'); hp.classList.add('show'); renderHist() } else if (act === 'keepalive') { sm.classList.remove('show'); kp.classList.add('show'); updateStorageInfo(); } } e.stopPropagation() });
+    sm.addEventListener('click', e => { 
+        let it = e.target.closest('.si'); 
+        if (it) { 
+            let act = it.dataset.action; 
+            sm.classList.remove('show');
+            if (act === 'cs') { sp.classList.add('show'); updateStorageInfo(); } 
+            else if (act === 'wb') { wp.classList.add('show'); renderWB(); } 
+            else if (act === 'theme') { tp.classList.add('show'); } 
+            else if (act === 'history') { hp.classList.add('show'); renderHist(); } 
+            else if (act === 'keepalive') { kp.classList.add('show'); updateStorageInfo(); } 
+        } 
+        e.stopPropagation(); 
+    });
     bk.onclick = () => sp.classList.remove('show');
     themeBack.onclick = () => tp.classList.remove('show');
     hpBack.onclick = () => hp.classList.remove('show');
@@ -708,47 +720,48 @@
     }
 
     async function updateStorageInfo() {
-        if (!storageStatusText) return;
+        const textElements = document.querySelectorAll('.storageStatusText, #storageStatusText');
+        const bannerElements = document.querySelectorAll('.storageWarningBanner, #storageWarningBanner');
+        const warnTextElements = document.querySelectorAll('.storageWarningText, #storageWarningText');
+        if (!textElements.length) return;
+
+        let displayUsage = '', displayQuota = '', percent = 0, isWarning = false;
+
         try {
             if (navigator.storage && navigator.storage.estimate) {
                 const estimate = await navigator.storage.estimate();
                 const usage = estimate.usage || 0;
                 const quota = estimate.quota || 0;
                 if (quota > 0) {
-                    const percent = Math.min(100, Math.round((usage / quota) * 1000) / 10);
-                    const usageStr = formatBytes(usage);
-                    const quotaStr = formatBytes(quota);
-                    storageStatusText.textContent = `存储占用：${usageStr} / ${quotaStr} (${percent}%)`;
-                    
-                    if (percent >= 90) {
-                        storageWarningText.textContent = `⚠️ 存储空间接近上限 (${percent}%)，建议清理无用图片或导出备份`;
-                        storageWarningBanner.style.display = 'flex';
-                    } else {
-                        storageWarningBanner.style.display = 'none';
-                    }
-                    return;
+                    percent = Math.min(100, Math.round((usage / quota) * 1000) / 10);
+                    displayUsage = formatBytes(usage);
+                    displayQuota = formatBytes(quota);
+                    isWarning = percent >= 90;
                 }
             }
         } catch (e) {}
 
-        // 兜底方案：估算 localStorage 体积 (按标准上限 5MB 估算)
-        let totalBytes = 0;
-        try {
-            for (let key in localStorage) {
-                if (localStorage.hasOwnProperty(key)) {
-                    totalBytes += ((localStorage[key] || '').length + key.length) * 2;
+        if (!displayUsage) {
+            // 兜底方案：估算 localStorage 体积
+            let totalBytes = 0;
+            try {
+                for (let key in localStorage) {
+                    if (localStorage.hasOwnProperty(key)) {
+                        totalBytes += ((localStorage[key] || '').length + key.length) * 2;
+                    }
                 }
-            }
-        } catch(e) {}
-        const defaultQuota = 5 * 1024 * 1024;
-        const percent = Math.min(100, Math.round((totalBytes / defaultQuota) * 1000) / 10);
-        storageStatusText.textContent = `存储占用：${formatBytes(totalBytes)} / ${formatBytes(defaultQuota)} (${percent}%)`;
-        if (percent >= 90) {
-            storageWarningText.textContent = `⚠️ 存储空间接近上限 (${percent}%)，建议清理无用数据或导出备份`;
-            storageWarningBanner.style.display = 'flex';
-        } else {
-            storageWarningBanner.style.display = 'none';
+            } catch(e) {}
+            const defaultQuota = 5 * 1024 * 1024;
+            percent = Math.min(100, Math.round((totalBytes / defaultQuota) * 1000) / 10);
+            displayUsage = formatBytes(totalBytes);
+            displayQuota = formatBytes(defaultQuota);
+            isWarning = percent >= 90;
         }
+
+        const msgText = `存储占用：${displayUsage} / ${displayQuota} (${percent}%)`;
+        textElements.forEach(el => el.textContent = msgText);
+        bannerElements.forEach(banner => banner.style.display = isWarning ? 'flex' : 'none');
+        warnTextElements.forEach(w => w.textContent = `⚠️ 存储空间接近上限 (${percent}%)，建议清理无用数据或导出备份`);
     }
 
     function applyNight() { setThemeInputs(nightTheme); applyTheme(); }

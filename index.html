@@ -41,7 +41,16 @@
             <div class="tr"><label>开启主动私聊</label><input type="checkbox" id="at"></div>
             <div class="sr" id="air" style="opacity:.5"><span><span>主动间隔</span><span id="aiv">10分钟</span></span><input type="range" id="ai" min="1" max="120" value="10" disabled><div style="display:flex;justify-content:space-between"><span>1分钟</span><span>2小时</span></div></div>
             <div class="tr"><label>回复混入Emoji</label><input type="checkbox" id="et" checked></div>
-        </div><button id="ap" style="background:#887B6E;border:none;border-radius:30px;padding:14px;color:#F7F2EC;font-weight:bold">应用设置</button>
+        </div>
+        <div class="sg">
+            <div class="sl"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> 本地存储空间</div>
+            <div class="storageStatusText storage-text">正在计算存储占用...</div>
+            <div class="storageWarningBanner storage-warning-banner" style="display:none">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span class="storageWarningText">存储空间接近上限，建议清理或导出备份</span>
+            </div>
+        </div>
+        <button id="ap" style="background:#887B6E;border:none;border-radius:30px;padding:14px;color:#F7F2EC;font-weight:bold">应用设置</button>
     </div>
     <div class="wp" id="wp">
         <div class="ph"><button class="bb" id="wbBack"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button><span class="pt">字卡库</span></div>

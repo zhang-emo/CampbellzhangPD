@@ -18,6 +18,7 @@
     const hp = Q('hp'), hpBack = Q('hpBack'), historySearch = Q('historySearch'), historyDate = Q('historyDate'), jumpDateBtn = Q('jumpDateBtn'), clearDateFilter = Q('clearDateFilter'), exportHistoryBtn = Q('exportHistoryBtn'), importHistoryBtn = Q('importHistoryBtn'), historyJSONInput = Q('historyJSONInput'), historyList = Q('historyList');
     const clearAllHistoryBtn = Q('clearAllHistoryBtn');
     const kp = Q('kp'), kpBack = Q('kpBack'), keepAliveToggle = Q('keepAliveToggle'), nightModeToggle = Q('nightModeToggle');
+    const storageStatusText = Q('storageStatusText'), storageWarningBanner = Q('storageWarningBanner'), storageWarningText = Q('storageWarningText');
     const defTheme = { bodyBg: '#6B6058', mainBg: '#EFE9E3', headerBg: '#9B8E82', btnBg: '#C4B9AC', inputBg: '#BEB2A5', myBubble: '#E4D9CD', contactBubble: '#F7F2EC', accent: '#887B6E', fontSize: 16 };
     const nightTheme = { bodyBg: '#2E2A27', mainBg: '#3E3935', headerBg: '#504842', btnBg: '#5E544C', inputBg: '#554D46', myBubble: '#585049', contactBubble: '#4D4640', accent: '#7D7165', fontSize: 16 };
     let isNight = localStorage.getItem('nightMode') === 'true';
@@ -191,6 +192,9 @@
         localStorage.setItem('chatSettings', JSON.stringify({ myName, ctName, myAv, ctAv, rDelay, aMin, atChecked: at.checked, etChecked: et.checked }));
         localStorage.setItem('wordCards', JSON.stringify({ textCards, emojiCards, imageCards, statusCards, groups }));
         saveToIndexedDB();
+        if (kp && kp.classList.contains('show')) {
+            updateStorageInfo();
+        }
     }
     window.addEventListener('beforeunload', () => { if (dataLoaded) saveAllData(); });
 
@@ -235,6 +239,7 @@
         setInterval(saveAllData, 5000); // 加载完成后再启动定时保存
         updateContactStatus(true);
         checkScheduledReplies();
+        updateStorageInfo();
         render(); updSlider(); applySet();
     });
 
@@ -508,7 +513,7 @@
     qbx.onclick = () => { quoteMsg = null; updQBar() };
     document.addEventListener('click', e => { if (!e.target.closest('.mb') && !e.target.closest('.ab')) document.querySelectorAll('.mactions').forEach(a => a.style.display = 'none') });
     st.onclick = e => { e.stopPropagation(); sm.classList.toggle('show') };
-    sm.addEventListener('click', e => { let it = e.target.closest('.si'); if (it) { let act = it.dataset.action; if (act === 'cs') { sm.classList.remove('show'); sp.classList.add('show') } else if (act === 'wb') { sm.classList.remove('show'); wp.classList.add('show'); renderWB() } else if (act === 'theme') { sm.classList.remove('show'); tp.classList.add('show') } else if (act === 'history') { sm.classList.remove('show'); hp.classList.add('show'); renderHist() } else if (act === 'keepalive') { sm.classList.remove('show'); kp.classList.add('show') } } e.stopPropagation() });
+    sm.addEventListener('click', e => { let it = e.target.closest('.si'); if (it) { let act = it.dataset.action; if (act === 'cs') { sm.classList.remove('show'); sp.classList.add('show') } else if (act === 'wb') { sm.classList.remove('show'); wp.classList.add('show'); renderWB() } else if (act === 'theme') { sm.classList.remove('show'); tp.classList.add('show') } else if (act === 'history') { sm.classList.remove('show'); hp.classList.add('show'); renderHist() } else if (act === 'keepalive') { sm.classList.remove('show'); kp.classList.add('show'); updateStorageInfo(); } } e.stopPropagation() });
     bk.onclick = () => sp.classList.remove('show');
     themeBack.onclick = () => tp.classList.remove('show');
     hpBack.onclick = () => hp.classList.remove('show');
@@ -693,6 +698,59 @@
     keepAliveToggle.checked = savedKeep; if (savedKeep) startKeepAlive();
     keepAliveToggle.onchange = () => { if (keepAliveToggle.checked) { localStorage.setItem('keepAlive', 'true'); startKeepAlive(); } else { localStorage.setItem('keepAlive', 'false'); stopKeepAlive(); } };
 
+    function formatBytes(bytes, decimals = 1) {
+        if (!bytes || bytes <= 0) return '0 B';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    async function updateStorageInfo() {
+        if (!storageStatusText) return;
+        try {
+            if (navigator.storage && navigator.storage.estimate) {
+                const estimate = await navigator.storage.estimate();
+                const usage = estimate.usage || 0;
+                const quota = estimate.quota || 0;
+                if (quota > 0) {
+                    const percent = Math.min(100, Math.round((usage / quota) * 1000) / 10);
+                    const usageStr = formatBytes(usage);
+                    const quotaStr = formatBytes(quota);
+                    storageStatusText.textContent = `存储占用：${usageStr} / ${quotaStr} (${percent}%)`;
+                    
+                    if (percent >= 90) {
+                        storageWarningText.textContent = `⚠️ 存储空间接近上限 (${percent}%)，建议清理无用图片或导出备份`;
+                        storageWarningBanner.style.display = 'flex';
+                    } else {
+                        storageWarningBanner.style.display = 'none';
+                    }
+                    return;
+                }
+            }
+        } catch (e) {}
+
+        // 兜底方案：估算 localStorage 体积 (按标准上限 5MB 估算)
+        let totalBytes = 0;
+        try {
+            for (let key in localStorage) {
+                if (localStorage.hasOwnProperty(key)) {
+                    totalBytes += ((localStorage[key] || '').length + key.length) * 2;
+                }
+            }
+        } catch(e) {}
+        const defaultQuota = 5 * 1024 * 1024;
+        const percent = Math.min(100, Math.round((totalBytes / defaultQuota) * 1000) / 10);
+        storageStatusText.textContent = `存储占用：${formatBytes(totalBytes)} / ${formatBytes(defaultQuota)} (${percent}%)`;
+        if (percent >= 90) {
+            storageWarningText.textContent = `⚠️ 存储空间接近上限 (${percent}%)，建议清理无用数据或导出备份`;
+            storageWarningBanner.style.display = 'flex';
+        } else {
+            storageWarningBanner.style.display = 'none';
+        }
+    }
+
     function applyNight() { setThemeInputs(nightTheme); applyTheme(); }
     nightModeToggle.onclick = () => { isNight = !isNight; localStorage.setItem('nightMode', isNight); updateNightUI(); if (isNight) applyNight(); else loadTheme(); };
     function syncHex(target) { const hexInput = document.querySelector(`.hex-input[data-target="${target.id}"]`); if (hexInput) hexInput.value = target.value }
@@ -708,7 +766,7 @@
         let style = document.getElementById('dynamicTheme'); if (!style) { style = document.createElement('style'); style.id = 'dynamicTheme'; document.head.appendChild(style) }
         let txt = isNight ? '#E8E0D8' : '';
         let nightExtra = isNight ? `.sg,.sm,.search-box,.import-area,.card-item,.history-msg,.mi,.si:hover,.ab:hover{background:${nightTheme.contactBubble}!important}.sp,.wp,.tp,.hp,.kp,.mp{background:${mainBg}!important}.ir input[type=text],textarea,.hex-input,.date-row input[type=date]{background:#3E3935!important;border-color:${accent}!important;color:${txt}!important}.group-tag{background:${btnBg}70!important;color:${txt}cc!important}.tab{background:${btnBg}90!important;color:${txt}cc!important}.circle-btn,.btn,.call-btn,.img-btn,.sticker-btn,.rapid-reply-btn,.ext-toggle-btn,.ext-icon,.letter-del-btn,.group-export-btn,.group-toggle-btn{color:${txt}!important}.bb,.group-edit-btn{color:${txt}cc!important}.mr.hl{background:rgba(200,190,180,.15)!important}input[type=range]::-webkit-slider-track,input[type=range]::-moz-range-track{background:#555!important}.si,.sg,.card-item,.card-item.img-card{border-color:${accent}!important}.date-row input[type=date]{background:${nightTheme.contactBubble}!important}` : '';
-        let txtFull = `${txt?`.c,.cn,.st,.si,.pt,.sl,.ir label,.mb,.mi,.tab,.btn,.group-tag,.card-content,.ab,.new-group-btn,.circle-btn,.call-btn,.img-btn,.sticker-btn,.rapid-reply-btn,.ext-toggle-btn,.ext-icon,.bb,.qbt,.message-time,.setting-label,.search-box,.color-row span,.history-msg .meta,.history-msg .preview,.bf,.tr label,.sr span,.font-slider span,.kp .sg div,.import-area div,.eh,.kp .sg div span,.sticker-panel .add-sticker-btn,.msg-system,.mailbox-tab,.group-export-btn,.group-toggle-btn{color:${txt}!important}.mi::placeholder,.search-box::placeholder,textarea::placeholder{color:${txt}99}.qp,.qt{color:${txt}cc!important}.eh{color:${txt}88!important}`:''}`;
+        let txtFull = `${txt?`.c,.cn,.st,.si,.pt,.sl,.ir label,.mb,.mi,.tab,.btn,.group-tag,.card-content,.ab,.new-group-btn,.circle-btn,.call-btn,.img-btn,.sticker-btn,.rapid-reply-btn,.ext-toggle-btn,.ext-icon,.bb,.qbt,.message-time,.setting-label,.search-box,.color-row span,.history-msg .meta,.history-msg .preview,.bf,.tr label,.sr span,.font-slider span,.kp .sg div,.import-area div,.eh,.kp .sg div span,.storage-text,.sticker-panel .add-sticker-btn,.msg-system,.mailbox-tab,.group-export-btn,.group-toggle-btn{color:${txt}!important}.mi::placeholder,.search-box::placeholder,textarea::placeholder{color:${txt}99}.qp,.qt{color:${txt}cc!important}.eh{color:${txt}88!important}`:''}`;
         let avatarExtra = `.av{background:${mainBg}!important}.call-avatar{background:${mainBg}!important}`;
         let callExtra = `.call-header{background:${headerBg}!important}.call-window{background:${mainBg}!important}.call-minimized-bar{background:${headerBg}!important}`;
         style.textContent = `body{background:${bodyBg}!important}.c,.ma,.sp,.wp,.tp,.hp,.kp,.mp{background:${mainBg}!important}.h{background:${headerBg}!important}.ia{background:${inputBg}!important}.btn,.circle-btn,.au,.new-group-btn,.snd,.call-btn,.img-btn,.sticker-btn,.rapid-reply-btn,.ext-toggle-btn,.ext-icon,.ap,#applyThemeBtn,.group-export-btn,.group-toggle-btn{background:${btnBg}!important}.btn:hover,.circle-btn:hover,.au:hover,.new-group-btn:hover,.snd:hover,.call-btn:hover,.img-btn:hover,.sticker-btn:hover,.rapid-reply-btn:hover,.ext-toggle-btn:hover,.ext-icon:hover,.ap:hover,#applyThemeBtn:hover,.group-export-btn:hover,.group-toggle-btn:hover{filter:brightness(0.85)!important}.tab,.mailbox-tab{background:${btnBg}90}.tab.active,.mailbox-tab.active{background:${accent}!important}.group-tag{background:${btnBg}70}.mb{background:${contactBubble}!important}.r .mb{background:${myBubble}!important}${txtFull}${nightExtra}${avatarExtra}${callExtra}.c .cn,.c .st,.c .si,.c .pt,.c .sl,.c .ir label,.c .mb,.c .mi,.c .tab,.c .btn,.c .group-tag,.c .card-content,.c .ab,.c .new-group-btn,.c .circle-btn,.c .call-btn,.c .img-btn,.c .sticker-btn,.c .rapid-reply-btn,.c .ext-toggle-btn,.c .ext-icon,.c .bb,.c .qbt,.c .message-time,.c .setting-label,.c .search-box,.c .mailbox-tab,.c .group-export-btn,.c .group-toggle-btn{font-size:${fontSize}px!important}`

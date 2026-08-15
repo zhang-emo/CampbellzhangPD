@@ -98,6 +98,14 @@
             <div class="tr"><label>启用后台常驻保活</label><input type="checkbox" id="keepAliveToggle"></div>
             <div style="font-size:13px;color:#5A4E3E;margin-top:8px">启用后，页面将定时发送轻量网络请求以维持活跃状态，防止浏览器休眠或标签被卸载。</div>
         </div>
+        <div class="sg">
+            <div class="sl"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> 本地存储空间</div>
+            <div id="storageStatusText" class="storage-text">正在计算存储占用...</div>
+            <div id="storageWarningBanner" class="storage-warning-banner" style="display:none">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span id="storageWarningText">存储空间接近上限，建议清理或导出备份</span>
+            </div>
+        </div>
     </div>
     <div class="mp" id="mp">
         <div class="ph"><button class="bb" id="mbBack"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button><span class="pt">信箱</span></div>

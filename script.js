@@ -100,12 +100,14 @@
                 return;
             }
             try {
-                const request = indexedDB.open('ChatAppDB', 1);
+                const request = indexedDB.open('ChatAppDB', 2);
                 request.onupgradeneeded = e => {
                     const dbInst = e.target.result;
                     if (!dbInst.objectStoreNames.contains('messages')) dbInst.createObjectStore('messages');
                     if (!dbInst.objectStoreNames.contains('letters')) dbInst.createObjectStore('letters');
                     if (!dbInst.objectStoreNames.contains('stickers')) dbInst.createObjectStore('stickers');
+                    if (!dbInst.objectStoreNames.contains('image_cards')) dbInst.createObjectStore('image_cards');
+                    if (!dbInst.objectStoreNames.contains('avatars')) dbInst.createObjectStore('avatars');
                 };
                 request.onsuccess = e => {
                     db = e.target.result;
@@ -176,6 +178,8 @@
                 localStorage.setItem('chatMessages_fb', JSON.stringify({ msgs, nid }));
                 localStorage.setItem('letters_fb', JSON.stringify(letters));
                 localStorage.setItem('chatStickers_fb', JSON.stringify(chatStickers));
+                localStorage.setItem('imageCards_fb', JSON.stringify(imageCards));
+                localStorage.setItem('avatars_fb', JSON.stringify({ myAv, ctAv }));
             } catch (e) {
                 console.warn('LocalStorage 存储已满或异常:', e);
             }
@@ -186,11 +190,15 @@
             await dbPut('messages', 'nid', nid).catch(()=>{});
             await dbPut('letters', 'data', letters).catch(()=>{});
             await dbPut('stickers', 'data', chatStickers).catch(()=>{});
+            await dbPut('image_cards', 'data', imageCards).catch(()=>{});
+            await dbPut('avatars', 'data', { myAv, ctAv }).catch(()=>{});
         } catch (e) {
             try {
                 localStorage.setItem('chatMessages_fb', JSON.stringify({ msgs, nid }));
                 localStorage.setItem('letters_fb', JSON.stringify(letters));
                 localStorage.setItem('chatStickers_fb', JSON.stringify(chatStickers));
+                localStorage.setItem('imageCards_fb', JSON.stringify(imageCards));
+                localStorage.setItem('avatars_fb', JSON.stringify({ myAv, ctAv }));
             } catch (err) {}
         }
     }
@@ -207,6 +215,13 @@
                 if (lettersFb) letters = lettersFb;
                 const stickersFb = JSON.parse(localStorage.getItem('chatStickers_fb') || 'null');
                 if (stickersFb) chatStickers = stickersFb;
+                const imgCardsFb = JSON.parse(localStorage.getItem('imageCards_fb') || 'null');
+                if (imgCardsFb) imageCards = imgCardsFb;
+                const avatarsFb = JSON.parse(localStorage.getItem('avatars_fb') || 'null');
+                if (avatarsFb) {
+                    if (avatarsFb.myAv !== undefined) myAv = avatarsFb.myAv;
+                    if (avatarsFb.ctAv !== undefined) ctAv = avatarsFb.ctAv;
+                }
                 return true;
             } catch (e) {
                 return false;
@@ -217,10 +232,17 @@
             const n = await dbGet('messages', 'nid').catch(() => null);
             const l = await dbGet('letters', 'data').catch(() => null);
             const s = await dbGet('stickers', 'data').catch(() => null);
+            const ic = await dbGet('image_cards', 'data').catch(() => null);
+            const av = await dbGet('avatars', 'data').catch(() => null);
             if (m !== undefined && m !== null) msgs = m;
             if (n !== undefined && n !== null) nid = n;
             if (l !== undefined && l !== null) letters = l;
             if (s !== undefined && s !== null) chatStickers = s;
+            if (ic !== undefined && ic !== null) imageCards = ic;
+            if (av !== undefined && av !== null) {
+                if (av.myAv !== undefined) myAv = av.myAv;
+                if (av.ctAv !== undefined) ctAv = av.ctAv;
+            }
             return true;
         } catch (e) {
             return false;
@@ -232,6 +254,8 @@
             localStorage.removeItem('chatMessages_fb');
             localStorage.removeItem('letters_fb');
             localStorage.removeItem('chatStickers_fb');
+            localStorage.removeItem('imageCards_fb');
+            localStorage.removeItem('avatars_fb');
         } catch (e) {}
         if (!db) return;
         try {
@@ -239,6 +263,8 @@
             await dbDelete('messages', 'nid').catch(()=>{});
             await dbDelete('letters', 'data').catch(()=>{});
             await dbDelete('stickers', 'data').catch(()=>{});
+            await dbDelete('image_cards', 'data').catch(()=>{});
+            await dbDelete('avatars', 'data').catch(()=>{});
         } catch (e) {}
     }
     /* --------------------------- */
@@ -266,9 +292,14 @@
     function saveAllData() {
         if (!dataLoaded) return;
         try {
-            localStorage.setItem('chatSettings', JSON.stringify({ myName, ctName, myAv, ctAv, rDelay, aMin, atChecked: at.checked, etChecked: et.checked }));
-            localStorage.setItem('wordCards', JSON.stringify({ textCards, emojiCards, imageCards, statusCards, groups }));
-        } catch (e) {}
+            // localStorage 中只保存轻量基础设置，不再存储 base64 头像
+            localStorage.setItem('chatSettings', JSON.stringify({ myName, ctName, rDelay, aMin, atChecked: at.checked, etChecked: et.checked }));
+            // wordCards 中排除 imageCards，防止 base64 图片撑爆 5MB localStorage
+            localStorage.setItem('wordCards', JSON.stringify({ textCards, emojiCards, statusCards, groups }));
+        } catch (e) {
+            console.warn('LocalStorage 写入异常:', e);
+        }
+        // 大体积资源 (聊天记录、信件、表情包、图片字卡、自定义头像) 统一持久化至 IndexedDB
         saveToIndexedDB();
         if (kp && kp.classList.contains('show')) {
             updateStorageInfo();
@@ -296,21 +327,54 @@
         try {
             const chatSettings = JSON.parse(localStorage.getItem('chatSettings') || 'null');
             if (chatSettings) {
-                myName = chatSettings.myName || '我'; ctName = chatSettings.ctName || 'Norton·Campbell'; myAv = chatSettings.myAv || ''; ctAv = chatSettings.ctAv || '';
-                rDelay = chatSettings.rDelay || 3000; aMin = chatSettings.aMin || 10;
-                at.checked = chatSettings.atChecked || false; et.checked = chatSettings.etChecked !== undefined ? chatSettings.etChecked : true;
-                mn.value = myName; ctn.value = ctName; rs.value = rDelay / 100; ai.value = aMin;
-                air.style.opacity = at.checked ? '1' : '.5'; ai.disabled = !at.checked; updSlider();
+                myName = chatSettings.myName || '我';
+                ctName = chatSettings.ctName || 'Norton·Campbell';
+                // 如果 IndexedDB 中没有读取到头像，且旧 settings 中存在头像，迁移并保存
+                if (!myAv && chatSettings.myAv) myAv = chatSettings.myAv;
+                if (!ctAv && chatSettings.ctAv) ctAv = chatSettings.ctAv;
+                rDelay = chatSettings.rDelay || 3000;
+                aMin = chatSettings.aMin || 10;
+                at.checked = chatSettings.atChecked || false;
+                et.checked = chatSettings.etChecked !== undefined ? chatSettings.etChecked : true;
+                mn.value = myName;
+                ctn.value = ctName;
+                rs.value = rDelay / 100;
+                ai.value = aMin;
+                air.style.opacity = at.checked ? '1' : '.5';
+                ai.disabled = !at.checked;
+                updSlider();
+                
+                // 从 localStorage 中剥离 base64 头像数据，释放空间
+                if (chatSettings.myAv !== undefined || chatSettings.ctAv !== undefined) {
+                    delete chatSettings.myAv;
+                    delete chatSettings.ctAv;
+                    localStorage.setItem('chatSettings', JSON.stringify(chatSettings));
+                }
             }
             const wordCards = JSON.parse(localStorage.getItem('wordCards') || 'null');
             if (wordCards) {
-                textCards = wordCards.textCards || []; emojiCards = wordCards.emojiCards || []; imageCards = wordCards.imageCards || []; statusCards = wordCards.statusCards || [];
+                textCards = wordCards.textCards || [];
+                emojiCards = wordCards.emojiCards || [];
+                // 如果 IndexedDB 中没有图片卡，而 localStorage 的 wordCards 中有旧数据，迁移至 imageCards
+                if ((!imageCards || imageCards.length === 0) && wordCards.imageCards && wordCards.imageCards.length > 0) {
+                    imageCards = wordCards.imageCards;
+                }
+                statusCards = wordCards.statusCards || [];
                 groups = wordCards.groups || [{ id: 'default', name: '未分组', color: '#90943f' }];
                 const defaultGroup = groups.find(g => g.id === 'default');
                 if (defaultGroup && defaultGroup.name === 'name') defaultGroup.name = '未分组';
                 if (!groups.some(g => g.id === 'default')) groups.unshift({ id: 'default', name: '未分组', color: '#90943f' });
+
+                // 清理 localStorage 中的 imageCards，防止撑爆 5MB 上限
+                if (wordCards.imageCards !== undefined) {
+                    delete wordCards.imageCards;
+                    localStorage.setItem('wordCards', JSON.stringify(wordCards));
+                }
             }
-        } catch (e) {}
+            await saveToIndexedDB();
+        } catch (e) {
+            console.warn('数据初始化加载异常:', e);
+        }
         dataLoaded = true;
     }
 

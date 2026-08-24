@@ -1,12 +1,12 @@
 (function() {
     const MY = 'me', CT = 'contact', SYS = 'system';
-    let myName = '我', ctName = 'Norton·Campbell', myAv = '我', ctAv = '🌿', msgs = [], nid = 1000, quoteMsg = null;
+    let myName = '我', ctName = 'Norton·Campbell', myAv = '', ctAv = '', msgs = [], nid = 1000, quoteMsg = null;
     const Q = id => document.getElementById(id);
     const ma = Q('ma'), mi = Q('mi'), snd = Q('snd'), qb = Q('qb'), qbt = Q('qbt'), qbx = Q('qbx'), st = Q('st'), sm = Q('sm'), sp = Q('sp'), bk = Q('bk'), cn = Q('cn'), mn = Q('mn'), ctn = Q('ctn'), rs = Q('rs'), rsv = Q('rsv'), at = Q('at'), ai = Q('ai'), aiv = Q('aiv'), air = Q('air'), et = Q('et'), ap = Q('ap'), mu = Q('mu'), ctu = Q('ctu');
     let rTimer = null, aTimer = null, rDelay = 3000, aMin = 10, statusTimer = null;
+    let nextStatusUpdateTime = 0;
     let isQaReplying = false, qaQueue = [], currentQaTimer = null;
     let textCards = [], emojiCards = [], imageCards = [], statusCards = [], groups = [{ id: 'default', name: '未分组', color: '#90943f' }], chatStickers = [];
-    textCards = [];
     let currentTab = 'text', currentGroupFilter = 'default';
     let groupBarCollapsed = false;
     const contactStatusEl = Q('contactStatus');
@@ -18,7 +18,6 @@
     const hp = Q('hp'), hpBack = Q('hpBack'), historySearch = Q('historySearch'), historyDate = Q('historyDate'), jumpDateBtn = Q('jumpDateBtn'), clearDateFilter = Q('clearDateFilter'), exportHistoryBtn = Q('exportHistoryBtn'), importHistoryBtn = Q('importHistoryBtn'), historyJSONInput = Q('historyJSONInput'), historyList = Q('historyList');
     const clearAllHistoryBtn = Q('clearAllHistoryBtn');
     const kp = Q('kp'), kpBack = Q('kpBack'), keepAliveToggle = Q('keepAliveToggle'), nightModeToggle = Q('nightModeToggle');
-    const storageStatusText = Q('storageStatusText'), storageWarningBanner = Q('storageWarningBanner'), storageWarningText = Q('storageWarningText');
     const defTheme = { bodyBg: '#6B6058', mainBg: '#EFE9E3', headerBg: '#9B8E82', btnBg: '#C4B9AC', inputBg: '#BEB2A5', myBubble: '#E4D9CD', contactBubble: '#F7F2EC', accent: '#887B6E', fontSize: 16 };
     const nightTheme = { bodyBg: '#2E2A27', mainBg: '#3E3935', headerBg: '#504842', btnBg: '#5E544C', inputBg: '#554D46', myBubble: '#585049', contactBubble: '#4D4640', accent: '#7D7165', fontSize: 16 };
     let isNight = localStorage.getItem('nightMode') === 'true';
@@ -73,7 +72,7 @@
         };
     }
 
-    function customConfirm(message, onConfirm, title = '确认删除') {
+    function customConfirm(message, onConfirm, title = '确认操作') {
         customModal({ title, message, showCancel: true, onConfirm });
     }
 
@@ -86,82 +85,161 @@
     }
 
     let rapidReplyActive = false, rapidReplyTimer = null;
-    let dataLoaded = false; // 加载完成标志
+    let dataLoaded = false;
 
-    /* ---------- IndexedDB ---------- */
-    let db;
+    /* ---------- IndexedDB 模块与降级容错 ---------- */
+    let db = null;
+    let useLocalStorageFallback = false;
+
     function initDB() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open('ChatAppDB', 1);
-            request.onupgradeneeded = e => {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains('messages')) db.createObjectStore('messages');
-                if (!db.objectStoreNames.contains('letters')) db.createObjectStore('letters');
-                if (!db.objectStoreNames.contains('stickers')) db.createObjectStore('stickers');
-            };
-            request.onsuccess = e => { db = e.target.result; resolve(); };
-            request.onerror = () => reject();
+        return new Promise((resolve) => {
+            if (!window.indexedDB) {
+                console.warn('IndexedDB 不受支持，降级为 LocalStorage');
+                useLocalStorageFallback = true;
+                resolve(false);
+                return;
+            }
+            try {
+                const request = indexedDB.open('ChatAppDB', 1);
+                request.onupgradeneeded = e => {
+                    const dbInst = e.target.result;
+                    if (!dbInst.objectStoreNames.contains('messages')) dbInst.createObjectStore('messages');
+                    if (!dbInst.objectStoreNames.contains('letters')) dbInst.createObjectStore('letters');
+                    if (!dbInst.objectStoreNames.contains('stickers')) dbInst.createObjectStore('stickers');
+                };
+                request.onsuccess = e => {
+                    db = e.target.result;
+                    useLocalStorageFallback = false;
+                    resolve(true);
+                };
+                request.onerror = (err) => {
+                    console.warn('IndexedDB 初始化失败或无权限，启用 LocalStorage 降级', err);
+                    useLocalStorageFallback = true;
+                    resolve(false);
+                };
+            } catch (err) {
+                console.warn('IndexedDB 异常，启用 LocalStorage 降级', err);
+                useLocalStorageFallback = true;
+                resolve(false);
+            }
         });
     }
 
     function dbPut(storeName, key, value) {
         return new Promise((resolve, reject) => {
             if (!db) return reject();
-            const tx = db.transaction(storeName, 'readwrite');
-            const store = tx.objectStore(storeName);
-            store.put(value, key);
-            tx.oncomplete = resolve;
-            tx.onerror = reject;
+            try {
+                const tx = db.transaction(storeName, 'readwrite');
+                const store = tx.objectStore(storeName);
+                store.put(value, key);
+                tx.oncomplete = resolve;
+                tx.onerror = reject;
+            } catch (e) {
+                reject(e);
+            }
         });
     }
+
     function dbGet(storeName, key) {
         return new Promise((resolve, reject) => {
             if (!db) return reject();
-            const tx = db.transaction(storeName, 'readonly');
-            const store = tx.objectStore(storeName);
-            const req = store.get(key);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = reject;
+            try {
+                const tx = db.transaction(storeName, 'readonly');
+                const store = tx.objectStore(storeName);
+                const req = store.get(key);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = reject;
+            } catch (e) {
+                reject(e);
+            }
         });
     }
+
     function dbDelete(storeName, key) {
         return new Promise((resolve, reject) => {
             if (!db) return reject();
-            const tx = db.transaction(storeName, 'readwrite');
-            const store = tx.objectStore(storeName);
-            store.delete(key);
-            tx.oncomplete = resolve;
-            tx.onerror = reject;
+            try {
+                const tx = db.transaction(storeName, 'readwrite');
+                const store = tx.objectStore(storeName);
+                store.delete(key);
+                tx.oncomplete = resolve;
+                tx.onerror = reject;
+            } catch (e) {
+                reject(e);
+            }
         });
     }
 
     async function saveToIndexedDB() {
-        if (!db) return;
-        await dbPut('messages', 'msgs', msgs).catch(()=>{});
-        await dbPut('messages', 'nid', nid).catch(()=>{});
-        await dbPut('letters', 'data', letters).catch(()=>{});
-        await dbPut('stickers', 'data', chatStickers).catch(()=>{});
+        if (useLocalStorageFallback || !db) {
+            try {
+                localStorage.setItem('chatMessages_fb', JSON.stringify({ msgs, nid }));
+                localStorage.setItem('letters_fb', JSON.stringify(letters));
+                localStorage.setItem('chatStickers_fb', JSON.stringify(chatStickers));
+            } catch (e) {
+                console.warn('LocalStorage 存储已满或异常:', e);
+            }
+            return;
+        }
+        try {
+            await dbPut('messages', 'msgs', msgs).catch(()=>{});
+            await dbPut('messages', 'nid', nid).catch(()=>{});
+            await dbPut('letters', 'data', letters).catch(()=>{});
+            await dbPut('stickers', 'data', chatStickers).catch(()=>{});
+        } catch (e) {
+            try {
+                localStorage.setItem('chatMessages_fb', JSON.stringify({ msgs, nid }));
+                localStorage.setItem('letters_fb', JSON.stringify(letters));
+                localStorage.setItem('chatStickers_fb', JSON.stringify(chatStickers));
+            } catch (err) {}
+        }
     }
 
     async function loadFromIndexedDB() {
-        if (!db) return false;
-        const m = await dbGet('messages', 'msgs').catch(()=>null);
-        const n = await dbGet('messages', 'nid').catch(()=>null);
-        const l = await dbGet('letters', 'data').catch(()=>null);
-        const s = await dbGet('stickers', 'data').catch(()=>null);
-        if (m !== undefined) msgs = m;
-        if (n !== undefined) nid = n;
-        if (l !== undefined) letters = l;
-        if (s !== undefined) chatStickers = s;
-        return true;
+        if (useLocalStorageFallback || !db) {
+            try {
+                const savedFb = JSON.parse(localStorage.getItem('chatMessages_fb') || 'null');
+                if (savedFb) {
+                    if (savedFb.msgs !== undefined) msgs = savedFb.msgs;
+                    if (savedFb.nid !== undefined) nid = savedFb.nid;
+                }
+                const lettersFb = JSON.parse(localStorage.getItem('letters_fb') || 'null');
+                if (lettersFb) letters = lettersFb;
+                const stickersFb = JSON.parse(localStorage.getItem('chatStickers_fb') || 'null');
+                if (stickersFb) chatStickers = stickersFb;
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+        try {
+            const m = await dbGet('messages', 'msgs').catch(() => null);
+            const n = await dbGet('messages', 'nid').catch(() => null);
+            const l = await dbGet('letters', 'data').catch(() => null);
+            const s = await dbGet('stickers', 'data').catch(() => null);
+            if (m !== undefined && m !== null) msgs = m;
+            if (n !== undefined && n !== null) nid = n;
+            if (l !== undefined && l !== null) letters = l;
+            if (s !== undefined && s !== null) chatStickers = s;
+            return true;
+        } catch (e) {
+            return false;
+        }
     }
 
     async function clearIndexedDB() {
+        try {
+            localStorage.removeItem('chatMessages_fb');
+            localStorage.removeItem('letters_fb');
+            localStorage.removeItem('chatStickers_fb');
+        } catch (e) {}
         if (!db) return;
-        await dbDelete('messages', 'msgs');
-        await dbDelete('messages', 'nid');
-        await dbDelete('letters', 'data');
-        await dbDelete('stickers', 'data');
+        try {
+            await dbDelete('messages', 'msgs').catch(()=>{});
+            await dbDelete('messages', 'nid').catch(()=>{});
+            await dbDelete('letters', 'data').catch(()=>{});
+            await dbDelete('stickers', 'data').catch(()=>{});
+        } catch (e) {}
     }
     /* --------------------------- */
 
@@ -178,8 +256,6 @@
         }
     }
 
-    function showTyping() { renderStatusUI(); }
-    function hideTyping() { renderStatusUI(); }
     function updateNightUI() { 
         const sunSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`;
         const moonSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`;
@@ -188,9 +264,11 @@
     updateNightUI(); if (isNight) applyNight();
 
     function saveAllData() {
-        if (!dataLoaded) return; // 未完成加载时不保存
-        localStorage.setItem('chatSettings', JSON.stringify({ myName, ctName, myAv, ctAv, rDelay, aMin, atChecked: at.checked, etChecked: et.checked }));
-        localStorage.setItem('wordCards', JSON.stringify({ textCards, emojiCards, imageCards, statusCards, groups }));
+        if (!dataLoaded) return;
+        try {
+            localStorage.setItem('chatSettings', JSON.stringify({ myName, ctName, myAv, ctAv, rDelay, aMin, atChecked: at.checked, etChecked: et.checked }));
+            localStorage.setItem('wordCards', JSON.stringify({ textCards, emojiCards, imageCards, statusCards, groups }));
+        } catch (e) {}
         saveToIndexedDB();
         if (kp && kp.classList.contains('show')) {
             updateStorageInfo();
@@ -201,56 +279,95 @@
     async function loadAllData() {
         await initDB();
         const indexSuccess = await loadFromIndexedDB();
-        // 如果 IndexedDB 无数据，尝试从 localStorage 迁移
         if (!indexSuccess || msgs.length === 0) {
-            const chatMessages = JSON.parse(localStorage.getItem('chatMessages'));
-            if (chatMessages) { msgs = chatMessages.msgs || []; nid = chatMessages.nid || 1000; }
-            const savedLetters = JSON.parse(localStorage.getItem('letters'));
-            if (savedLetters) letters = savedLetters;
-            const savedStickers = JSON.parse(localStorage.getItem('chatStickers'));
-            if (savedStickers) chatStickers = savedStickers;
-            // 迁移后保存到 IndexedDB 并清除 localStorage 对应键
-            await saveToIndexedDB();
-            localStorage.removeItem('chatMessages');
-            localStorage.removeItem('letters');
-            localStorage.removeItem('chatStickers');
+            try {
+                const chatMessages = JSON.parse(localStorage.getItem('chatMessages') || 'null');
+                if (chatMessages) { msgs = chatMessages.msgs || []; nid = chatMessages.nid || 1000; }
+                const savedLetters = JSON.parse(localStorage.getItem('letters') || 'null');
+                if (savedLetters) letters = savedLetters;
+                const savedStickers = JSON.parse(localStorage.getItem('chatStickers') || 'null');
+                if (savedStickers) chatStickers = savedStickers;
+                await saveToIndexedDB();
+                localStorage.removeItem('chatMessages');
+                localStorage.removeItem('letters');
+                localStorage.removeItem('chatStickers');
+            } catch (e) {}
         }
-        // 加载 localStorage 中的设置和字卡库
-        const chatSettings = JSON.parse(localStorage.getItem('chatSettings'));
-        if (chatSettings) {
-            myName = chatSettings.myName || '我'; ctName = chatSettings.ctName || 'Norton·Campbell'; myAv = chatSettings.myAv || '我'; ctAv = chatSettings.ctAv || '🌿';
-            rDelay = chatSettings.rDelay || 3000; aMin = chatSettings.aMin || 10;
-            at.checked = chatSettings.atChecked || false; et.checked = chatSettings.etChecked !== undefined ? chatSettings.etChecked : true;
-            mn.value = myName; ctn.value = ctName; rs.value = rDelay / 100; ai.value = aMin;
-            air.style.opacity = at.checked ? '1' : '.5'; ai.disabled = !at.checked; updSlider();
-        }
-        const wordCards = JSON.parse(localStorage.getItem('wordCards'));
-        if (wordCards) {
-            textCards = wordCards.textCards || []; emojiCards = wordCards.emojiCards || []; imageCards = wordCards.imageCards || []; statusCards = wordCards.statusCards || [];
-            groups = wordCards.groups || [{ id: 'default', name: '未分组', color: '#90943f' }];
-            const defaultGroup = groups.find(g => g.id === 'default');
-            if (defaultGroup && defaultGroup.name === 'name') defaultGroup.name = '未分组';
-            if (!groups.some(g => g.id === 'default')) groups.unshift({ id: 'default', name: '未分组', color: '#90943f' });
-        }
+        try {
+            const chatSettings = JSON.parse(localStorage.getItem('chatSettings') || 'null');
+            if (chatSettings) {
+                myName = chatSettings.myName || '我'; ctName = chatSettings.ctName || 'Norton·Campbell'; myAv = chatSettings.myAv || ''; ctAv = chatSettings.ctAv || '';
+                rDelay = chatSettings.rDelay || 3000; aMin = chatSettings.aMin || 10;
+                at.checked = chatSettings.atChecked || false; et.checked = chatSettings.etChecked !== undefined ? chatSettings.etChecked : true;
+                mn.value = myName; ctn.value = ctName; rs.value = rDelay / 100; ai.value = aMin;
+                air.style.opacity = at.checked ? '1' : '.5'; ai.disabled = !at.checked; updSlider();
+            }
+            const wordCards = JSON.parse(localStorage.getItem('wordCards') || 'null');
+            if (wordCards) {
+                textCards = wordCards.textCards || []; emojiCards = wordCards.emojiCards || []; imageCards = wordCards.imageCards || []; statusCards = wordCards.statusCards || [];
+                groups = wordCards.groups || [{ id: 'default', name: '未分组', color: '#90943f' }];
+                const defaultGroup = groups.find(g => g.id === 'default');
+                if (defaultGroup && defaultGroup.name === 'name') defaultGroup.name = '未分组';
+                if (!groups.some(g => g.id === 'default')) groups.unshift({ id: 'default', name: '未分组', color: '#90943f' });
+            }
+        } catch (e) {}
         dataLoaded = true;
     }
 
     loadAllData().then(() => {
-        setInterval(saveAllData, 5000); // 加载完成后再启动定时保存
+        setInterval(saveAllData, 5000);
         updateContactStatus(true);
         checkScheduledReplies();
         updateStorageInfo();
         render(); updSlider(); applySet();
     });
 
-    function compressImage(file, callback) {
+    function compressImage(file, callback, maxWidth = 800, quality = 0.8) {
+        if (!file) return;
+        const isGif = file.type === 'image/gif' || (file.name && file.name.toLowerCase().endsWith('.gif'));
         const reader = new FileReader();
         reader.onload = function(e) {
-            callback(e.target.result);
+            if (isGif) {
+                callback(e.target.result);
+                return;
+            }
+            const img = new Image();
+            img.onload = function() {
+                try {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxWidth || height > maxWidth) {
+                        if (width > height) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        } else {
+                            width = Math.round((width * maxWidth) / height);
+                            height = maxWidth;
+                        }
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+                    callback(dataUrl);
+                } catch (err) {
+                    callback(e.target.result);
+                }
+            };
+            img.onerror = function() {
+                callback(e.target.result);
+            };
+            img.src = e.target.result;
+        };
+        reader.onerror = function() {
+            if (typeof customAlert === 'function') customAlert('读取图片失败');
         };
         reader.readAsDataURL(file);
     }
 
+    /* 状态与长定时器保护 */
     function updateContactStatus(forcePick = false) {
         if (statusCards && statusCards.length > 0) {
             if (forcePick || !statusCards.some(c => c.content === currentStatusText)) {
@@ -261,9 +378,27 @@
             currentStatusText = '在线';
         }
         renderStatusUI();
+        scheduleNextStatusUpdate();
+    }
+
+    function scheduleNextStatusUpdate() {
         clearTimeout(statusTimer);
         const nextDelay = Math.floor(Math.random() * 8 * 3600000) + 3600000;
+        nextStatusUpdateTime = Date.now() + nextDelay;
+        try {
+            localStorage.setItem('nextStatusUpdateTime', String(nextStatusUpdateTime));
+        } catch (e) {}
         statusTimer = setTimeout(() => updateContactStatus(true), nextDelay);
+    }
+
+    function checkContactStatusSchedule() {
+        if (!nextStatusUpdateTime) {
+            const saved = parseInt(localStorage.getItem('nextStatusUpdateTime') || '0', 10);
+            if (saved) nextStatusUpdateTime = saved;
+        }
+        if (nextStatusUpdateTime && Date.now() >= nextStatusUpdateTime) {
+            updateContactStatus(true);
+        }
     }
 
     function getRandomReply() {
@@ -383,9 +518,8 @@
         sendNext();
     }
 
-    function handleRapidReply(e) { e.preventDefault(); sendRapidReplies(); }
+    function handleRapidReply(e) { if (e) e.preventDefault(); sendRapidReplies(); }
     rapidReplyBtn.addEventListener('click', handleRapidReply);
-    rapidReplyBtn.addEventListener('touchend', handleRapidReply);
 
     function simReply() {
         if (rTimer) clearTimeout(rTimer);
@@ -403,6 +537,7 @@
         }, rDelay);
         renderStatusUI();
     }
+
     function updSlider() { let v = parseInt(rs.value); rsv.textContent = Math.floor(v/10)+'秒'; rDelay = v*100; let m = parseInt(ai.value); aiv.textContent = m+'分钟'; aMin = m }
     rs.oninput = updSlider; ai.oninput = updSlider; at.onchange = () => { ai.disabled = !at.checked; air.style.opacity = at.checked ? '1' : '.5' }
     function applySet() {
@@ -412,7 +547,15 @@
     }
     ap.onclick = applySet;
 
-    function handleUpload(file, type) { if (!file) return; let r = new FileReader(); r.onload = e => { if (type === 'my') myAv = e.target.result; else ctAv = e.target.result; saveAllData(); }; r.readAsDataURL(file) }
+    function handleUpload(file, type) {
+        if (!file) return;
+        compressImage(file, (dataUrl) => {
+            if (type === 'my') myAv = dataUrl;
+            else ctAv = dataUrl;
+            saveAllData();
+            render();
+        }, 240, 0.85);
+    }
     document.querySelectorAll('.au').forEach(b => b.onclick = () => { let t = b.dataset.avatar, up = t==='my'?mu:ctu; up.click(); up.onchange = e => { if (e.target.files[0]) handleUpload(e.target.files[0], t); up.value = '' } });
 
     function init() { if (msgs.length === 0) { msgs = []; } }
@@ -420,12 +563,22 @@
     function find(id) { return msgs.find(m => m.id === id) }
     function esc(t) { let d = document.createElement('div'); d.textContent = t; return d.innerHTML }
     function highlight(id) { let r = document.querySelector(`.mr[data-mid="${id}"]`); if (!r) return; document.querySelectorAll('.mr.hl').forEach(e => e.classList.remove('hl')); r.classList.add('hl'); r.scrollIntoView({ behavior:'smooth', block:'center' }); setTimeout(() => r.classList.remove('hl'), 2000) }
-    function avHtml(v) { return v && v.startsWith('data:image') ? `<img src="${v}" style="width:100%;height:100%;object-fit:cover">` : v }
+    
+    function avHtml(v) {
+        if (v && v.startsWith('data:image')) {
+            return `<img src="${v}" style="width:100%;height:100%;object-fit:cover">`;
+        }
+        if (!v || v === '🌿' || v === '我') {
+            return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+        }
+        return esc(v);
+    }
+
     function render() {
         if (!msgs.length) { ma.innerHTML = ''; return }
         let h = '';
         msgs.forEach(m => {
-            if (m.senderId === SYS) { h += `<div class="mr msg-system"><span>${m.text}</span></div>`; return; }
+            if (m.senderId === SYS) { h += `<div class="mr msg-system"><span>${esc(m.text)}</span></div>`; return; }
             let me = m.senderId === MY, row = me ? 'mr r' : 'mr l', av = me ? avHtml(myAv) : avHtml(ctAv);
             const pinSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
             let qText = m.quoteText || '';
@@ -456,19 +609,31 @@
         });
         ma.innerHTML = h; ma.scrollTop = ma.scrollHeight;
     }
+
     function updQBar() { if (quoteMsg) { qb.style.display = 'flex'; qbt.textContent = `${quoteMsg.senderId===MY?myName:ctName}: ${(quoteMsg.msgType==='image'?'[图片]':quoteMsg.text).slice(0,40)}` } else qb.style.display = 'none' }
+
+    /* 修复 ⑤: 防止发送空白消息及发送竞态 */
     function send(txt, q = null, msgType = 'text') {
-        if (msgType === 'image' && !txt) return;
         if (isSending) return;
+        let content = txt;
+        if (msgType === 'image') {
+            if (!content) return;
+        } else {
+            if (typeof content !== 'string') return;
+            content = content.trim();
+            if (!content) return;
+        }
         isSending = true;
-        let msg = { id:nid++, senderId:MY, text:txt.trim(), timestamp:Date.now(), status:'unread', quoteId:q?.id, quoteText:q?.msgType==='image'?'[图片]':q?.text, msgType };
+        let msg = { id: nid++, senderId: MY, text: content, timestamp: Date.now(), status: 'unread', quoteId: q?.id, quoteText: q?.msgType === 'image' ? '[图片]' : q?.text, msgType };
         msgs.push(msg);
-        setTimeout(() => { let un = msgs.filter(m => m.senderId===MY && m.status==='unread'); if (un.length) { un[un.length-1].status = 'read'; render(); saveAllData(); } }, 1800);
+        setTimeout(() => { let un = msgs.filter(m => m.senderId === MY && m.status === 'unread'); if (un.length) { un[un.length - 1].status = 'read'; render(); saveAllData(); } }, 1800);
         quoteMsg = null;
-        mi.value = ''; mi.focus();
+        mi.value = '';
+        mi.focus();
         setTimeout(() => { mi.value = ''; isSending = false; }, 50);
         updQBar(); render(); simReply(); saveAllData();
     }
+
     function del(id) {
         let i = msgs.findIndex(m => m.id === id);
         if (i === -1) return;
@@ -477,8 +642,20 @@
         if (quoteMsg && quoteMsg.id === id) quoteMsg = null;
         render(); updQBar(); saveAllData();
     }
-    snd.onclick = () => { send(mi.value, quoteMsg); };
-    mi.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); send(mi.value, quoteMsg); } });
+
+    snd.onclick = () => {
+        if (mi.value && mi.value.trim()) {
+            send(mi.value, quoteMsg);
+        }
+    };
+    mi.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (mi.value && mi.value.trim()) {
+                send(mi.value, quoteMsg);
+            }
+        }
+    });
 
     function handleMessageClick(e) {
         if (e.type === 'click' && ignoreNextClick) { ignoreNextClick = false; return; }
@@ -736,21 +913,36 @@
         renderMailbox();
     }
     function checkScheduledReplies() {
-        const now = Date.now();
-        let changed = false;
-        letters.forEach(l => {
-            if (l.type === 'sent' && !l.replied && l.replyDue <= now) {
-                const numSentences = Math.floor(Math.random()*5)+8;
-                const sentences = [];
-                for (let i=0;i<numSentences;i++) { sentences.push(textCards[Math.floor(Math.random()*textCards.length)].content); }
-                const replyDate = new Date();
-                const replyDateStr = `${replyDate.getFullYear()}-${(replyDate.getMonth()+1).toString().padStart(2,'0')}-${replyDate.getDate().toString().padStart(2,'0')}`;
-                const replyContent = `To Collins·Turner\n\n${sentences.join('\n')}\n\n${replyDateStr}  Norton·Campbell`;
-                letters.push({ id: Date.now()+Math.random(), type: 'received', content: replyContent, timestamp: replyDate.getTime(), replyTo: l.id });
-                l.replied = true; changed = true;
-            }
-        });
-        if (changed) saveAllData();
+        try {
+            const now = Date.now();
+            let changed = false;
+            letters.forEach(l => {
+                if (l.type === 'sent' && !l.replied && l.replyDue <= now) {
+                    const numSentences = Math.floor(Math.random() * 5) + 8;
+                    const sentences = [];
+                    if (textCards && textCards.length > 0) {
+                        for (let i = 0; i < numSentences; i++) {
+                            const randomCard = textCards[Math.floor(Math.random() * textCards.length)];
+                            if (randomCard && randomCard.content) {
+                                sentences.push(randomCard.content);
+                            }
+                        }
+                    }
+                    if (sentences.length === 0) {
+                        sentences.push('收到你的来信了。展信佳。', '近来一切安好，见字如面。', '愿生活常伴温暖与喜悦。', '期待下次再与你通信。');
+                    }
+                    const replyDate = new Date();
+                    const replyDateStr = `${replyDate.getFullYear()}-${(replyDate.getMonth()+1).toString().padStart(2,'0')}-${replyDate.getDate().toString().padStart(2,'0')}`;
+                    const replyContent = `To Collins·Turner\n\n${sentences.join('\n')}\n\n${replyDateStr}  Norton·Campbell`;
+                    letters.push({ id: Date.now() + Math.random(), type: 'received', content: replyContent, timestamp: replyDate.getTime(), replyTo: l.id });
+                    l.replied = true;
+                    changed = true;
+                }
+            });
+            if (changed) saveAllData();
+        } catch (err) {
+            console.error('Error checking scheduled replies:', err);
+        }
     }
     writeLetterBtn.onclick = () => { letterEditArea.style.display = 'block'; };
     cancelLetterBtn.onclick = () => { letterEditArea.style.display = 'none'; };
@@ -761,12 +953,84 @@
     mbBack.onclick = () => mp.classList.remove('show');
     setInterval(checkScheduledReplies, 60000);
 
+    /* 修复 ⑥: 兼容 APK WebView (file://) 及通用保活 */
     let keepAliveId = null;
-    function startKeepAlive() { if (keepAliveId) return; keepAliveId = setInterval(() => { fetch(window.location.href, { method: 'HEAD' }).catch(() => {}) }, 30000); }
-    function stopKeepAlive() { if (keepAliveId) { clearInterval(keepAliveId); keepAliveId = null; } }
+    let wakeLockSentinel = null;
+
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator && navigator.wakeLock.request) {
+                wakeLockSentinel = await navigator.wakeLock.request('screen');
+                wakeLockSentinel.addEventListener('release', () => {
+                    wakeLockSentinel = null;
+                });
+            }
+        } catch (e) {}
+    }
+
+    function releaseWakeLock() {
+        if (wakeLockSentinel) {
+            try {
+                wakeLockSentinel.release();
+            } catch (e) {}
+            wakeLockSentinel = null;
+        }
+    }
+
+    function startKeepAlive() {
+        if (keepAliveId) return;
+        requestWakeLock();
+        const ping = () => {
+            checkScheduledReplies();
+            checkContactStatusSchedule();
+            if (window.location.protocol.startsWith('http')) {
+                fetch(window.location.href, { method: 'HEAD', cache: 'no-store' }).catch(() => {});
+            }
+        };
+        ping();
+        keepAliveId = setInterval(ping, 25000);
+    }
+
+    function stopKeepAlive() {
+        if (keepAliveId) {
+            clearInterval(keepAliveId);
+            keepAliveId = null;
+        }
+        releaseWakeLock();
+    }
+
     const savedKeep = localStorage.getItem('keepAlive') === 'true';
     keepAliveToggle.checked = savedKeep; if (savedKeep) startKeepAlive();
-    keepAliveToggle.onchange = () => { if (keepAliveToggle.checked) { localStorage.setItem('keepAlive', 'true'); startKeepAlive(); } else { localStorage.setItem('keepAlive', 'false'); stopKeepAlive(); } };
+    keepAliveToggle.onchange = () => { 
+        if (keepAliveToggle.checked) { 
+            localStorage.setItem('keepAlive', 'true'); 
+            startKeepAlive(); 
+        } else { 
+            localStorage.setItem('keepAlive', 'false'); 
+            stopKeepAlive(); 
+        } 
+    };
+
+    /* 修复 ⑩: 定时与生命周期监听 */
+    setInterval(() => {
+        checkScheduledReplies();
+        checkContactStatusSchedule();
+    }, 30000);
+
+    window.addEventListener('focus', () => {
+        checkScheduledReplies();
+        checkContactStatusSchedule();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            if (keepAliveToggle && keepAliveToggle.checked) {
+                requestWakeLock();
+            }
+            checkScheduledReplies();
+            checkContactStatusSchedule();
+        }
+    });
 
     function formatBytes(bytes, decimals = 1) {
         if (!bytes || bytes <= 0) return '0 B';
@@ -800,7 +1064,6 @@
         } catch (e) {}
 
         if (!displayUsage) {
-            // 兜底方案：估算 localStorage 体积
             let totalBytes = 0;
             try {
                 for (let key in localStorage) {
@@ -819,7 +1082,7 @@
         const msgText = `存储占用：${displayUsage} / ${displayQuota} (${percent}%)`;
         textElements.forEach(el => el.textContent = msgText);
         bannerElements.forEach(banner => banner.style.display = isWarning ? 'flex' : 'none');
-        warnTextElements.forEach(w => w.textContent = `⚠️ 存储空间接近上限 (${percent}%)，建议清理无用数据或导出备份`);
+        warnTextElements.forEach(w => w.textContent = `存储空间接近上限 (${percent}%)，建议清理无用数据或导出备份`);
     }
 
     function applyNight() { setThemeInputs(nightTheme); applyTheme(); }
@@ -860,6 +1123,11 @@
     function updateCallUI() { if (!inCall) return; let elapsed = Math.floor((Date.now()-callStartTime)/1000); let timeStr = formatTime(elapsed); callTimer.textContent = timeStr; cmiTime.textContent = timeStr; }
     function resetCallBody() { callBody.querySelector('.call-avatar').style.display = ''; callTimer.style.display = ''; callHangup.style.display = ''; incActions.style.display = 'none'; callTitle.textContent = '通话中'; }
     function clearDialTimer() { if (dialTimer) { clearTimeout(dialTimer); dialTimer = null; } }
+    function getCallAvatarHtml() {
+        return ctAv && ctAv.startsWith('data:image') 
+            ? `<img src="${ctAv}" style="width:100%;height:100%;object-fit:cover">` 
+            : `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+    }
     function startCall(fromSystem = false) {
         if (inCall) return;
         inCall = true; callStartTime = Date.now(); callMinimized = false; incomingWaiting = false; isDialing = false;
@@ -867,11 +1135,11 @@
         callWindow.style.display = 'flex'; callWindow.style.width = '220px'; callWindow.style.height = 'auto'; callWindow.style.borderRadius = '24px';
         callHeader.style.display = 'flex'; callBody.style.display = 'flex'; cmiBar.style.display = 'none';
         resetCallBody();
-        callAvatar.innerHTML = ctAv && ctAv.startsWith('data:image') ? `<img src="${ctAv}" style="width:100%;height:100%;object-fit:cover">` : ctAv;
+        callAvatar.innerHTML = getCallAvatarHtml();
         callWindow.style.left = '50%'; callWindow.style.top = '50%'; callWindow.style.transform = 'translate(-50%,-50%)';
         callTimer.textContent = '00:00:00'; cmiTime.textContent = '00:00:00'; callMin.textContent = '—';
         callTimerId = setInterval(updateCallUI, 1000);
-        if (!fromSystem) { msgs.push({ id:nid++, senderId:SYS, text:'📞 通话开始', timestamp:Date.now() }); render(); saveAllData(); }
+        if (!fromSystem) { msgs.push({ id:nid++, senderId:SYS, text:'通话开始', timestamp:Date.now() }); render(); saveAllData(); }
         render();
     }
     function endCall() {
@@ -880,13 +1148,13 @@
         clearDialTimer();
         if (inCall) {
             let elapsed = Math.floor((Date.now()-callStartTime)/1000);
-            msgs.push({ id:nid++, senderId:SYS, text:`📞 通话结束，时长 ${formatTime(elapsed)}`, timestamp:Date.now() });
+            msgs.push({ id:nid++, senderId:SYS, text:`通话结束，时长 ${formatTime(elapsed)}`, timestamp:Date.now() });
             saveAllData(); render();
         } else if (incomingWaiting) {
-            msgs.push({ id:nid++, senderId:SYS, text:'📞 未接来电', timestamp:Date.now() });
+            msgs.push({ id:nid++, senderId:SYS, text:'未接来电', timestamp:Date.now() });
             saveAllData();
         } else if (isDialing) {
-            msgs.push({ id:nid++, senderId:SYS, text:'📞 对方未接听', timestamp:Date.now() });
+            msgs.push({ id:nid++, senderId:SYS, text:'对方未接听', timestamp:Date.now() });
             saveAllData();
         }
         callWindow.style.display = 'none'; inCall = false; callMinimized = false; incomingWaiting = false; isDialing = false;
@@ -898,7 +1166,7 @@
         callWindow.style.display = 'flex'; callWindow.style.width = '220px'; callWindow.style.height = 'auto'; callWindow.style.borderRadius = '24px';
         callHeader.style.display = 'flex'; callBody.style.display = 'flex'; cmiBar.style.display = 'none';
         callTitle.textContent = '来电';
-        callAvatar.innerHTML = ctAv && ctAv.startsWith('data:image') ? `<img src="${ctAv}" style="width:100%;height:100%;object-fit:cover">` : ctAv;
+        callAvatar.innerHTML = getCallAvatarHtml();
         callTimer.style.display = 'none'; callHangup.style.display = 'none'; incActions.style.display = 'flex';
         callWindow.style.left = '50%'; callWindow.style.top = '50%'; callWindow.style.transform = 'translate(-50%,-50%)';
     }
@@ -908,7 +1176,7 @@
         callWindow.style.display = 'flex'; callWindow.style.width = '220px'; callWindow.style.height = 'auto'; callWindow.style.borderRadius = '24px';
         callHeader.style.display = 'flex'; callBody.style.display = 'flex'; cmiBar.style.display = 'none';
         callTitle.textContent = '正在呼叫...';
-        callAvatar.innerHTML = ctAv && ctAv.startsWith('data:image') ? `<img src="${ctAv}" style="width:100%;height:100%;object-fit:cover">` : ctAv;
+        callAvatar.innerHTML = getCallAvatarHtml();
         callTimer.style.display = 'none'; callHangup.style.display = 'none'; incActions.style.display = 'none';
         callWindow.style.left = '50%'; callWindow.style.top = '50%'; callWindow.style.transform = 'translate(-50%,-50%)';
         const delay = Math.floor(Math.random() * 2000) + 1000;
@@ -942,8 +1210,12 @@
         if (incomingWaiting || isDialing) return;
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        dragInfo = { x: clientX - callWindow.offsetLeft, y: clientY - callWindow.offsetTop };
-        if (e.touches) e.preventDefault();
+        const rect = callWindow.getBoundingClientRect();
+        callWindow.style.left = rect.left + 'px';
+        callWindow.style.top = rect.top + 'px';
+        callWindow.style.transform = 'none';
+        dragInfo = { x: clientX - rect.left, y: clientY - rect.top };
+        if (e.touches && e.cancelable) e.preventDefault();
     }
     function onDrag(e) {
         if (!dragInfo) return;
@@ -995,7 +1267,19 @@
     historySearch.oninput = renderHist;
     jumpDateBtn.onclick = () => { if (historyDate.value) renderHist(); };
     clearDateFilter.onclick = () => { historyDate.value = ''; renderHist(); };
-    exportHistoryBtn.onclick = () => { const dataStr = JSON.stringify(msgs, null, 2); const blob = new Blob([dataStr], { type:'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'chat_history.json'; a.click(); };
+
+    /* 修复 ⑦: 释放 Blob URL 避免内存泄漏 (导出聊天记录) */
+    exportHistoryBtn.onclick = () => { 
+        const dataStr = JSON.stringify(msgs, null, 2); 
+        const blob = new Blob([dataStr], { type:'application/json' }); 
+        const a = document.createElement('a'); 
+        const url = URL.createObjectURL(blob);
+        a.href = url; 
+        a.download = 'chat_history.json'; 
+        a.click(); 
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+
     importHistoryBtn.onclick = () => historyJSONInput.click();
     historyJSONInput.onchange = (e) => {
         const file = e.target.files[0]; if (!file) return;
@@ -1026,7 +1310,7 @@
     };
 
     clearAllHistoryBtn.onclick = async () => {
-        customConfirm('⚠️ 确定要永久清除所有聊天记录吗？此操作不可恢复。', async () => {
+        customConfirm('确定要永久清除所有聊天记录吗？此操作不可恢复。', async () => {
             msgs = []; nid = 1000;
             render();
             await clearIndexedDB();
@@ -1089,14 +1373,22 @@
         document.getElementById('exportGroupBtn')?.addEventListener('click', () => { exportGroupJSON(currentGroupFilter); });
         document.getElementById('collapseGroupBtn')?.addEventListener('click', () => { groupBarCollapsed = true; renderWB(); });
     }
+
+    /* 修复 ⑦: 释放 Blob URL 避免内存泄漏 (导出分组字卡) */
     function exportGroupJSON(groupId) {
         let group = groups.find(g => g.id === groupId);
         if (!group) return;
         let filteredTextCards = textCards.filter(c => c.groupId === groupId);
         let data = { text: filteredTextCards, emoji: emojiCards, image: imageCards, status: statusCards, groups, exportGroupId: groupId, exportGroupName: group.name };
         let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wordbank_' + group.name + '.json'; a.click();
+        let a = document.createElement('a'); 
+        const url = URL.createObjectURL(blob);
+        a.href = url; 
+        a.download = 'wordbank_' + group.name + '.json'; 
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
+
     function getCardListArray() { if (currentTab === 'text') return textCards; if (currentTab === 'emoji') return emojiCards; if (currentTab === 'image') return imageCards; if (currentTab === 'status') return statusCards; return []; }
     function renderWB() {
         renderGroupBar();
@@ -1153,11 +1445,9 @@
         importTextArea.value = '';
         importArea.style.display = 'none';
     }
-    function handleImportCancel(e) { e.preventDefault(); importArea.style.display = 'none'; }
+    function handleImportCancel(e) { if (e) e.preventDefault(); importArea.style.display = 'none'; }
     confirmImport.addEventListener('click', handleImportConfirm);
-    confirmImport.addEventListener('touchend', handleImportConfirm);
     cancelImport.addEventListener('click', handleImportCancel);
-    cancelImport.addEventListener('touchend', handleImportCancel);
 
     imgUploadInput.onchange = e => {
         let files = e.target.files;
@@ -1176,7 +1466,19 @@
             if (num === 0) { exportAllJSON(); } else { exportGroupJSON(groups[num-1].id); }
         });
     };
-    function exportAllJSON() { let data = { text: textCards, emoji: emojiCards, image: imageCards, status: statusCards, groups }; let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wordbank.json'; a.click(); }
+
+    /* 修复 ⑦: 释放 Blob URL 避免内存泄漏 (导出全部字卡) */
+    function exportAllJSON() { 
+        let data = { text: textCards, emoji: emojiCards, image: imageCards, status: statusCards, groups }; 
+        let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); 
+        let a = document.createElement('a'); 
+        const url = URL.createObjectURL(blob);
+        a.href = url; 
+        a.download = 'wordbank.json'; 
+        a.click(); 
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
     wbImportJSON.onclick = () => jsonUploadInput.click();
     jsonUploadInput.onchange = e => { let f = e.target.files[0]; if (!f) return; let r = new FileReader(); r.onload = ev => { try { let data = JSON.parse(ev.target.result); textCards = data.text || []; emojiCards = data.emoji || []; imageCards = data.image || []; statusCards = data.status || []; groups = data.groups || [{ id: 'default', name: '未分组', color: '#90943f' }]; const defaultGroup = groups.find(g => g.id === 'default'); if (defaultGroup && defaultGroup.name === 'name') defaultGroup.name = '未分组'; if (!groups.some(g => g.id === 'default')) groups.unshift({ id: 'default', name: '未分组', color: '#90943f' }); updateContactStatus(true); renderWB(); saveAllData(); } catch(ex) { customAlert('无效JSON') } }; r.readAsText(f); jsonUploadInput.value = ''; };
     cardList.addEventListener('click', e => {
@@ -1221,7 +1523,7 @@
         if (!c) return;
         const availableHeight = window.innerHeight - 32;
         c.style.height = Math.min(availableHeight, 640) + 'px';
-        c.style.transform = 'translateY(-25px)';
+        c.style.transform = 'translateY(-24px)';
     }
     window.addEventListener('resize', adjustLayout);
     if (window.visualViewport) { window.visualViewport.addEventListener('resize', adjustLayout); }

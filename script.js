@@ -243,24 +243,10 @@
         render(); updSlider(); applySet();
     });
 
-    function compressImage(file, callback, maxWidth=160, quality=0.5) {
+    function compressImage(file, callback) {
         const reader = new FileReader();
         reader.onload = function(e) {
-            const img = new Image();
-            img.onload = function() {
-                const canvas = document.createElement('canvas');
-                let width = img.width, height = img.height;
-                if (width > maxWidth) {
-                    height = (maxWidth / width) * height;
-                    width = maxWidth;
-                }
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                callback(canvas.toDataURL('image/jpeg', quality));
-            };
-            img.src = e.target.result;
+            callback(e.target.result);
         };
         reader.readAsDataURL(file);
     }
@@ -442,7 +428,9 @@
             if (m.senderId === SYS) { h += `<div class="mr msg-system"><span>${m.text}</span></div>`; return; }
             let me = m.senderId === MY, row = me ? 'mr r' : 'mr l', av = me ? avHtml(myAv) : avHtml(ctAv);
             const pinSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
-            let q = m.quoteId ? `<div class="qp" data-qid="${m.quoteId}"><span class="qt">${pinSvg}${(m.quoteText||'').length>30?m.quoteText.slice(0,30)+'…':m.quoteText||''}</span></div>` : '';
+            let qText = m.quoteText || '';
+            let qSafe = qText.length > 30 ? qText.slice(0, 30) + '…' : qText;
+            let q = m.quoteId ? `<div class="qp" data-qid="${m.quoteId}"><span class="qt">${pinSvg}${esc(qSafe)}</span></div>` : '';
             let d = new Date(m.timestamp), time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
             let stt = me ? (m.status === 'read' ? '<span class="rs sdc">✓✓</span>' : '<span class="rs sc">✓</span>') : '<span style="opacity:.4">·</span>';
             const replySvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`;
@@ -546,21 +534,84 @@
         stickerGrid.innerHTML = '';
         chatStickers.forEach((stk, idx) => {
             let item = document.createElement('div'); item.className = 'sticker-item';
-            const closeSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
-            item.innerHTML = `<img src="${stk}"><button class="sticker-del" data-index="${idx}">${closeSvg}</button>`;
-            item.querySelector('img').addEventListener('click', () => { send(stk, null, 'image'); stickerPanel.classList.remove('show'); });
-            const delBtn = item.querySelector('.sticker-del');
-            const delHandler = (e) => {
-                e.stopPropagation(); e.preventDefault();
-                const currentIdx = parseInt(e.target.dataset.index);
-                if (!isNaN(currentIdx) && chatStickers[currentIdx]) {
-                    chatStickers.splice(currentIdx,1);
-                    saveAllData();
-                    renderStickerPanel();
+            const trashSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+            item.innerHTML = `<img src="${stk}"><div class="sticker-action-overlay"><button class="sticker-del-action-btn" data-index="${idx}">${trashSvg} 删除</button></div>`;
+            
+            let pressTimer = null;
+            let isLongPress = false;
+            let startX = 0, startY = 0;
+
+            const startPress = (e) => {
+                isLongPress = false;
+                const touch = e.touches ? e.touches[0] : e;
+                startX = touch.clientX;
+                startY = touch.clientY;
+                if (pressTimer) clearTimeout(pressTimer);
+                pressTimer = setTimeout(() => {
+                    isLongPress = true;
+                    document.querySelectorAll('.sticker-item.show-action').forEach(el => el.classList.remove('show-action'));
+                    item.classList.add('show-action');
+                }, 400);
+            };
+
+            const cancelPress = () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
                 }
             };
-            delBtn.addEventListener('click', delHandler);
-            delBtn.addEventListener('touchend', delHandler);
+
+            const movePress = (e) => {
+                if (!pressTimer) return;
+                const touch = e.touches ? e.touches[0] : e;
+                if (Math.abs(touch.clientX - startX) > 8 || Math.abs(touch.clientY - startY) > 8) {
+                    cancelPress();
+                }
+            };
+
+            item.addEventListener('touchstart', startPress, { passive: true });
+            item.addEventListener('touchmove', movePress, { passive: true });
+            item.addEventListener('touchend', cancelPress);
+            item.addEventListener('touchcancel', cancelPress);
+
+            item.addEventListener('mousedown', startPress);
+            item.addEventListener('mousemove', movePress);
+            item.addEventListener('mouseup', cancelPress);
+            item.addEventListener('mouseleave', cancelPress);
+
+            item.addEventListener('click', (e) => {
+                const delBtn = e.target.closest('.sticker-del-action-btn');
+                if (delBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const currentIdx = parseInt(delBtn.dataset.index);
+                    if (!isNaN(currentIdx) && chatStickers[currentIdx]) {
+                        customConfirm('确定要删除这张表情包吗？', () => {
+                            chatStickers.splice(currentIdx, 1);
+                            saveAllData();
+                            renderStickerPanel();
+                        });
+                    }
+                    return;
+                }
+
+                if (isLongPress) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    isLongPress = false;
+                    return;
+                }
+
+                if (item.classList.contains('show-action')) {
+                    item.classList.remove('show-action');
+                    e.stopPropagation();
+                    return;
+                }
+
+                send(stk, null, 'image');
+                stickerPanel.classList.remove('show');
+            });
+
             stickerGrid.appendChild(item);
         });
     }
@@ -574,7 +625,14 @@
         });
         stickerFileInput.value = '';
     };
-    document.addEventListener('click', (e) => { if (!e.target.closest('.sticker-panel') && !e.target.closest('.sticker-btn')) { stickerPanel.classList.remove('show'); } });
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.sticker-item')) {
+            document.querySelectorAll('.sticker-item.show-action').forEach(el => el.classList.remove('show-action'));
+        }
+        if (!e.target.closest('.sticker-panel') && !e.target.closest('.sticker-btn')) {
+            stickerPanel.classList.remove('show');
+        }
+    });
 
     const extToggleBtn = Q('extToggleBtn'), extPanel = Q('extPanel');
     const extCallBtn = Q('extCallBtn'), extImgBtn = Q('extImgBtn'), extQaBtn = Q('extQaBtn');

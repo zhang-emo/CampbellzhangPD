@@ -37,7 +37,10 @@
                         files: [file],
                         title: filename
                     }).catch(e => {
-                        if (e.name !== 'AbortError') fallbackDownload(blob, filename);
+                        if (e.name !== 'AbortError') {
+                            if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) customAlert('当前环境不支持下载');
+                            else fallbackDownload(blob, filename);
+                        }
                     });
                     return;
                 }
@@ -45,7 +48,11 @@
                 console.error('Share API error:', err);
             }
         }
-        fallbackDownload(blob, filename);
+        if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            customAlert('当前环境不支持下载');
+        } else {
+            fallbackDownload(blob, filename);
+        }
     }
     
     function fallbackDownload(blob, filename) {
@@ -212,6 +219,7 @@
                 localStorage.setItem('avatars_fb', JSON.stringify({ myAv, ctAv }));
             } catch (e) {
                 console.warn('LocalStorage 存储已满或异常:', e);
+                customAlert('存储空间不足，建议清理数据');
             }
             return;
         }
@@ -229,7 +237,10 @@
                 localStorage.setItem('chatStickers_fb', JSON.stringify(chatStickers));
                 localStorage.setItem('imageCards_fb', JSON.stringify(imageCards));
                 localStorage.setItem('avatars_fb', JSON.stringify({ myAv, ctAv }));
-            } catch (err) {}
+            } catch (err) {
+                console.warn('LocalStorage 存储已满或异常:', err);
+                customAlert('存储空间不足，建议清理数据');
+            }
         }
     }
 
@@ -336,6 +347,8 @@
         }
     }
     window.addEventListener('beforeunload', () => { if (dataLoaded) saveAllData(); });
+    window.addEventListener('pagehide', () => { if (dataLoaded) saveAllData(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && dataLoaded) saveAllData(); });
 
     async function loadAllData() {
         await initDB();
@@ -1060,6 +1073,17 @@
                 });
             }
         } catch (e) {}
+        
+        if (!window.wakeLockVideo) {
+            window.wakeLockVideo = document.createElement('video');
+            window.wakeLockVideo.playsInline = true;
+            window.wakeLockVideo.loop = true;
+            window.wakeLockVideo.muted = true;
+            window.wakeLockVideo.style.display = 'none';
+            window.wakeLockVideo.src = 'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAAAG21kYXQAAAGzABAHAAABthAAABsQAAAAMY/36wAAAu5tb292AAAAbG12aGQAAAAA/87i5//O4ucAAAEAAAMAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAwB0cmFrAAAAXHRraGQAAAAD/87i5//O4ucAAAABAAAAAAADAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAGFtZGlhAAAAIG1kaGQAAAAA/87i5//O4ucAAAEAAAAFAAAAAAAAAAAAMWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABn21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAVVzdGJsAAAAr3N0c2QAAAAAAAAAAQAAAJ9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAgACABIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAMWF2Y0MBQAAH/+EAFWdAAAcabmv4eAEBAwIQAAADAEAAAA8BAg8C8AAAhgAAO9UAAAAAGHN0dHMAAAAAAAAAAQAAAAEAAAABAAAAKHN0c3oAAAAAAAAAAQAAABMAAAAcc3RzYwAAAAAAAAABAAAAAQAAAAEAAAABAAAAFHN0Y28AAAAAAAAAAQAAADAAAAAcc3RzcwAAAAAAAAABAAAAAQAAABRzdHRzAAAAAAAAAAEAAAABAAAAAQ==';
+            document.body.appendChild(window.wakeLockVideo);
+        }
+        window.wakeLockVideo.play().catch(e => {});
     }
 
     function releaseWakeLock() {
@@ -1068,6 +1092,9 @@
                 wakeLockSentinel.release();
             } catch (e) {}
             wakeLockSentinel = null;
+        }
+        if (window.wakeLockVideo) {
+            window.wakeLockVideo.pause();
         }
     }
 
@@ -1142,22 +1169,24 @@
         if (!textElements.length) return;
 
         let displayUsage = '', displayQuota = '', percent = 0, isWarning = false;
+        let validStorageAPI = false;
 
         try {
             if (navigator.storage && navigator.storage.estimate) {
                 const estimate = await navigator.storage.estimate();
                 const usage = estimate.usage || 0;
                 const quota = estimate.quota || 0;
-                if (quota > 0) {
+                if (quota > 0 && usage > 0) {
                     percent = Math.min(100, Math.round((usage / quota) * 1000) / 10);
                     displayUsage = formatBytes(usage);
                     displayQuota = formatBytes(quota);
                     isWarning = percent >= 90;
+                    validStorageAPI = true;
                 }
             }
         } catch (e) {}
 
-        if (!displayUsage) {
+        if (!validStorageAPI) {
             let totalBytes = 0;
             try {
                 for (let key in localStorage) {
@@ -1322,8 +1351,12 @@
         if (!dragInfo) return;
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        callWindow.style.left = (clientX - dragInfo.x) + 'px';
-        callWindow.style.top = (clientY - dragInfo.y) + 'px';
+        let newLeft = clientX - dragInfo.x;
+        let newTop = clientY - dragInfo.y;
+        const maxLeft = window.innerWidth - callWindow.offsetWidth;
+        const maxTop = window.innerHeight - callWindow.offsetHeight;
+        callWindow.style.left = Math.max(0, Math.min(newLeft, maxLeft)) + 'px';
+        callWindow.style.top = Math.max(0, Math.min(newTop, maxTop)) + 'px';
         callWindow.style.transform = 'none';
         if (e.touches && e.cancelable) e.preventDefault();
     }
@@ -1606,7 +1639,8 @@
     function adjustLayout() {
         const c = document.querySelector('.c');
         if (!c) return;
-        const availableHeight = window.innerHeight - 32;
+        const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        const availableHeight = vh - 32;
         c.style.height = Math.min(availableHeight, 640) + 'px';
         c.style.transform = 'translateY(-24px)';
     }

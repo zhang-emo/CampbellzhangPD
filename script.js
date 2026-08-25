@@ -1812,6 +1812,11 @@
     function adjustLayout() {
         const c = document.querySelector('.c');
         if (!c) return;
+        if (window.innerWidth <= 600) {
+            c.style.height = '100%';
+            c.style.transform = 'none';
+            return;
+        }
         const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
         const availableHeight = vh - 32;
         c.style.height = Math.min(availableHeight, 640) + 'px';

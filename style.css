@@ -140,6 +140,8 @@ input[type=range]::-moz-range-thumb { width:24px; height:24px; background:#887B6
 .custom-modal-body { font-size:14px; color:#4a4035; line-height:1.4; word-break:break-word }
 .custom-modal-input-container { display:flex; flex-direction:column; gap:8px; text-align:left }
 .custom-modal-input { background:#fff; border:1px solid #887B6E; border-radius:12px; padding:8px 12px; font-size:14px; outline:none; width:100%; min-height:40px }
+.custom-modal-select-container { display:flex; flex-direction:column; gap:4px; text-align:left }
+.custom-modal-select { background:#fff; border:1px solid #887B6E; border-radius:12px; padding:8px 12px; font-size:14px; outline:none; width:100%; min-height:40px; color:#1C2D0A }
 .custom-modal-actions { display:flex; justify-content:center; gap:8px; margin-top:8px }
 
 .qa-bubble { background:#F7F2EC; border:1.5px solid #887B6E; border-radius:18px; padding:12px 14px; max-width:260px; color:#1E2C0E }

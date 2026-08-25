@@ -72,6 +72,8 @@
     const customModalBody = Q('customModalBody');
     const customModalInputContainer = Q('customModalInputContainer');
     const customModalInput = Q('customModalInput');
+    const customModalSelectContainer = Q('customModalSelectContainer');
+    const customModalSelect = Q('customModalSelect');
     const customModalCancel = Q('customModalCancel');
     const customModalConfirm = Q('customModalConfirm');
 
@@ -84,6 +86,17 @@
         } else {
             customModalInputContainer.style.display = 'none';
         }
+
+        if (opts.select && Array.isArray(opts.selectOptions) && opts.selectOptions.length > 0) {
+            customModalSelectContainer.style.display = 'block';
+            customModalSelect.innerHTML = opts.selectOptions.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
+            if (opts.defaultSelectValue !== undefined) {
+                customModalSelect.value = opts.defaultSelectValue;
+            }
+        } else {
+            customModalSelectContainer.style.display = 'none';
+        }
+
         customModalCancel.style.display = opts.showCancel === false ? 'none' : 'block';
         customModalCancel.textContent = opts.cancelText || '取消';
         customModalConfirm.textContent = opts.confirmText || '确定';
@@ -103,9 +116,18 @@
         };
 
         customModalConfirm.onclick = () => {
-            const val = opts.input ? customModalInput.value : true;
+            let res;
+            if (opts.input && opts.select) {
+                res = { value: customModalInput.value, selectValue: customModalSelect.value };
+            } else if (opts.input) {
+                res = customModalInput.value;
+            } else if (opts.select) {
+                res = customModalSelect.value;
+            } else {
+                res = true;
+            }
             cleanup();
-            if (opts.onConfirm) opts.onConfirm(val);
+            if (opts.onConfirm) opts.onConfirm(res);
         };
     }
 
@@ -117,8 +139,8 @@
         customModal({ title, message, showCancel: false, onConfirm });
     }
 
-    function customPrompt(message, defaultValue, onConfirm, title = '输入信息') {
-        customModal({ title, message, input: true, defaultValue, showCancel: true, onConfirm });
+    function customPrompt(message, defaultValue, onConfirm, title = '输入信息', extraOpts = {}) {
+        customModal({ title, message, input: true, defaultValue, showCancel: true, onConfirm, ...extraOpts });
     }
 
     let rapidReplyActive = false, rapidReplyTimer = null;
@@ -1743,24 +1765,41 @@
         if (editBtn) {
             let id = editBtn.dataset.edit, arr = getCardListArray(), c = arr.find(c => c.id == id);
             if (c) {
-                customPrompt('编辑内容', c.content, (nv) => {
-                    if (nv !== null && nv.trim()) {
-                        if (arr.some(x => x.content === nv.trim() && x.id !== id)) customAlert('内容重复');
-                        else {
-                            c.content = nv.trim();
-                            if (currentTab === 'text') {
-                                let opts = groups.map(g => `${g.name}:${g.id}`).join(',');
-                                customPrompt('分组ID (可选: '+opts+')', c.groupId, (ng) => {
-                                    if (ng && groups.some(g => g.id === ng.trim())) c.groupId = ng.trim();
-                                    renderWB(); saveAllData();
-                                });
+                if (currentTab === 'text') {
+                    const selectOptions = groups.map(g => ({ label: g.name, value: g.id }));
+                    customPrompt('编辑字卡内容及分组', c.content, (res) => {
+                        if (!res) return;
+                        const nv = typeof res === 'object' ? res.value : res;
+                        const ng = typeof res === 'object' ? res.selectValue : c.groupId;
+                        if (nv && nv.trim()) {
+                            if (arr.some(x => x.content === nv.trim() && x.id !== id)) {
+                                customAlert('内容重复');
                             } else {
-                                if (currentTab === 'status') updateContactStatus(true);
-                                renderWB(); saveAllData();
+                                c.content = nv.trim();
+                                if (ng && groups.some(g => g.id === ng)) c.groupId = ng;
+                                renderWB();
+                                saveAllData();
                             }
                         }
-                    }
-                });
+                    }, '编辑字卡', {
+                        select: true,
+                        selectOptions,
+                        defaultSelectValue: c.groupId || 'default'
+                    });
+                } else {
+                    customPrompt('编辑内容', c.content, (nv) => {
+                        if (nv !== null && typeof nv === 'string' && nv.trim()) {
+                            if (arr.some(x => x.content === nv.trim() && x.id !== id)) {
+                                customAlert('内容重复');
+                            } else {
+                                c.content = nv.trim();
+                                if (currentTab === 'status') updateContactStatus(true);
+                                renderWB();
+                                saveAllData();
+                            }
+                        }
+                    }, '编辑内容');
+                }
             }
         }
     });

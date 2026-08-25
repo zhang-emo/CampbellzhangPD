@@ -581,7 +581,7 @@
                 quoteText: `问答: ${qaItem.q}`
             };
             msgs.push(replyMsg);
-            render();
+            appendMessage(replyMsg);
             saveAllData();
             checkNextQueue();
         }, rDelay);
@@ -609,7 +609,7 @@
                     const msg = { id: nid++, senderId: CT, text: msgObj.content, timestamp: Date.now(), status: 'read' };
                     if (msgObj.type === 'image') msg.msgType = 'image';
                     maybeAttachQuote(msg);
-                    msgs.push(msg); render(); saveAllData();
+                    msgs.push(msg); appendMessage(msg); saveAllData();
                 }
                 count++;
                 if (count < total && rapidReplyActive) {
@@ -638,7 +638,7 @@
                 const msg = { id: nid++, senderId: CT, text: msgObj.content, timestamp: Date.now(), status:'read' };
                 if (msgObj.type === 'image') msg.msgType = 'image';
                 maybeAttachQuote(msg);
-                msgs.push(msg); render(); saveAllData();
+                msgs.push(msg); appendMessage(msg); saveAllData();
             }
             checkNextQueue();
         }, rDelay);
@@ -669,7 +669,24 @@
     init();
     function find(id) { return msgs.find(m => m.id === id) }
     function esc(t) { let d = document.createElement('div'); d.textContent = t; return d.innerHTML }
-    function highlight(id) { let r = document.querySelector(`.mr[data-mid="${id}"]`); if (!r) return; document.querySelectorAll('.mr.hl').forEach(e => e.classList.remove('hl')); r.classList.add('hl'); r.scrollIntoView({ behavior:'smooth', block:'center' }); setTimeout(() => r.classList.remove('hl'), 2000) }
+    let visibleMsgLimit = 80;
+
+    function highlight(id) { 
+        let r = document.querySelector(`.mr[data-mid="${id}"]`); 
+        if (!r) {
+            const msgIdx = msgs.findIndex(m => m.id === id);
+            if (msgIdx !== -1) {
+                visibleMsgLimit = Math.max(visibleMsgLimit, msgs.length - msgIdx + 20);
+                render();
+                r = document.querySelector(`.mr[data-mid="${id}"]`);
+            }
+        }
+        if (!r) return; 
+        document.querySelectorAll('.mr.hl').forEach(e => e.classList.remove('hl')); 
+        r.classList.add('hl'); 
+        r.scrollIntoView({ behavior:'smooth', block:'center' }); 
+        setTimeout(() => r.classList.remove('hl'), 2000); 
+    }
     
     function avHtml(v) {
         if (v && v.startsWith('data:image')) {
@@ -681,40 +698,94 @@
         return esc(v);
     }
 
-    function render() {
-        if (!msgs.length) { ma.innerHTML = ''; return }
+    function getMessageHtml(m) {
+        if (m.senderId === SYS) { 
+            return `<div class="mr msg-system" data-mid="${m.id}"><span>${esc(m.text)}</span></div>`; 
+        }
+        let me = m.senderId === MY, row = me ? 'mr r' : 'mr l', av = me ? avHtml(myAv) : avHtml(ctAv);
+        const pinSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+        let qText = m.quoteText || '';
+        let qSafe = qText.length > 30 ? qText.slice(0, 30) + '…' : qText;
+        let q = m.quoteId ? `<div class="qp" data-qid="${m.quoteId}"><span class="qt">${pinSvg}${esc(qSafe)}</span></div>` : '';
+        let d = new Date(m.timestamp), time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+        let stt = me ? (m.status === 'read' ? '<span class="rs sdc">✓✓</span>' : '<span class="rs sc">✓</span>') : '<span style="opacity:.4">·</span>';
+        const replySvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`;
+        const trashSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
+        let act = `<div class="mactions"><button class="ab qa" data-id="${m.id}" title="引用">${replySvg}</button><button class="ab da" data-id="${m.id}" title="删除">${trashSvg}</button></div>`;
+        let ft = `<div class="bf"><span class="mt">${time}</span>${stt}${act}</div>`;
+        let bubbleContent;
+        if (m.msgType === 'image') { 
+            bubbleContent = `<div class="mb img-bubble"><img src="${m.text}" alt="图片"></div>`; 
+        } else if (m.msgType === 'qa') {
+            const qIconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+            bubbleContent = `<div class="qa-bubble" style="cursor:pointer" title="点击删除该问答">
+                <div class="qa-bubble-title">${qIconSvg} 二选一问答</div>
+                <div class="qa-bubble-q">${esc(m.text)}</div>
+                <div class="qa-opts">
+                    <div class="qa-opt-item"><strong>A.</strong> ${esc(m.qaOptA || '')}</div>
+                    <div class="qa-opt-item"><strong>B.</strong> ${esc(m.qaOptB || '')}</div>
+                </div>
+            </div>`;
+        } else { 
+            bubbleContent = `<div class="mb">${esc(m.text)}</div>`; 
+        }
+        if (me) { 
+            return `<div class="${row}" data-mid="${m.id}"><div class="bw">${q}${bubbleContent}${ft}</div><div class="av">${av}</div></div>`; 
+        } else { 
+            return `<div class="${row}" data-mid="${m.id}"><div class="av">${av}</div><div class="bw">${q}${bubbleContent}${ft}</div></div>`; 
+        }
+    }
+
+    function render(maintainScroll = false) {
+        if (!msgs.length) { ma.innerHTML = ''; return; }
+        const startIdx = Math.max(0, msgs.length - visibleMsgLimit);
+        const visibleSlice = msgs.slice(startIdx);
         let h = '';
-        msgs.forEach(m => {
-            if (m.senderId === SYS) { h += `<div class="mr msg-system"><span>${esc(m.text)}</span></div>`; return; }
-            let me = m.senderId === MY, row = me ? 'mr r' : 'mr l', av = me ? avHtml(myAv) : avHtml(ctAv);
-            const pinSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
-            let qText = m.quoteText || '';
-            let qSafe = qText.length > 30 ? qText.slice(0, 30) + '…' : qText;
-            let q = m.quoteId ? `<div class="qp" data-qid="${m.quoteId}"><span class="qt">${pinSvg}${esc(qSafe)}</span></div>` : '';
-            let d = new Date(m.timestamp), time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-            let stt = me ? (m.status === 'read' ? '<span class="rs sdc">✓✓</span>' : '<span class="rs sc">✓</span>') : '<span style="opacity:.4">·</span>';
-            const replySvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`;
-            const trashSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
-            let act = `<div class="mactions"><button class="ab qa" data-id="${m.id}" title="引用">${replySvg}</button><button class="ab da" data-id="${m.id}" title="删除">${trashSvg}</button></div>`;
-            let ft = `<div class="bf"><span class="mt">${time}</span>${stt}${act}</div>`;
-            let bubbleContent;
-            if (m.msgType === 'image') { bubbleContent = `<div class="mb img-bubble"><img src="${m.text}" alt="图片"></div>`; }
-            else if (m.msgType === 'qa') {
-                const qIconSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
-                bubbleContent = `<div class="qa-bubble" style="cursor:pointer" title="点击删除该问答">
-                    <div class="qa-bubble-title">${qIconSvg} 二选一问答</div>
-                    <div class="qa-bubble-q">${esc(m.text)}</div>
-                    <div class="qa-opts">
-                        <div class="qa-opt-item"><strong>A.</strong> ${esc(m.qaOptA || '')}</div>
-                        <div class="qa-opt-item"><strong>B.</strong> ${esc(m.qaOptB || '')}</div>
-                    </div>
-                </div>`;
-            }
-            else { bubbleContent = `<div class="mb">${esc(m.text)}</div>`; }
-            if (me) { h += `<div class="${row}" data-mid="${m.id}"><div class="bw">${q}${bubbleContent}${ft}</div><div class="av">${av}</div></div>`; }
-            else { h += `<div class="${row}" data-mid="${m.id}"><div class="av">${av}</div><div class="bw">${q}${bubbleContent}${ft}</div></div>`; }
+        if (startIdx > 0) {
+            h += `<div class="load-more-msgs" id="loadMoreMsgsBtn" style="text-align:center;padding:8px 12px;margin:8px auto;cursor:pointer;color:#2F471A;font-size:12px;background:rgba(255,255,255,0.45);border-radius:12px;border:1px solid #AAB185;width:fit-content;user-select:none;">查看更早的聊天记录 (还有 ${startIdx} 条)</div>`;
+        }
+        visibleSlice.forEach(m => {
+            h += getMessageHtml(m);
         });
-        ma.innerHTML = h; ma.scrollTop = ma.scrollHeight;
+        const prevScrollHeight = ma.scrollHeight;
+        const prevScrollTop = ma.scrollTop;
+        ma.innerHTML = h;
+        const loadMoreBtn = document.getElementById('loadMoreMsgsBtn');
+        if (loadMoreBtn) {
+            loadMoreBtn.onclick = () => {
+                visibleMsgLimit += 80;
+                render(true);
+            };
+        }
+        if (maintainScroll) {
+            ma.scrollTop = ma.scrollHeight - prevScrollHeight + prevScrollTop;
+        } else {
+            ma.scrollTop = ma.scrollHeight;
+        }
+    }
+
+    function appendMessage(m) {
+        if (!msgs.length || !ma.children.length) {
+            render();
+            return;
+        }
+        ma.insertAdjacentHTML('beforeend', getMessageHtml(m));
+        ma.scrollTop = ma.scrollHeight;
+    }
+
+    function updateMsgStatusInDOM(mid, status) {
+        const row = ma.querySelector(`.mr[data-mid="${mid}"]`);
+        if (!row) return;
+        const rs = row.querySelector('.rs');
+        if (rs) {
+            if (status === 'read') {
+                rs.className = 'rs sdc';
+                rs.textContent = '✓✓';
+            } else {
+                rs.className = 'rs sc';
+                rs.textContent = '✓';
+            }
+        }
     }
 
     function updQBar() { if (quoteMsg) { qb.style.display = 'flex'; qbt.textContent = `${quoteMsg.senderId===MY?myName:ctName}: ${(quoteMsg.msgType==='image'?'[图片]':quoteMsg.text).slice(0,40)}` } else qb.style.display = 'none' }
@@ -733,12 +804,23 @@
         isSending = true;
         let msg = { id: nid++, senderId: MY, text: content, timestamp: Date.now(), status: 'unread', quoteId: q?.id, quoteText: q?.msgType === 'image' ? '[图片]' : q?.text, msgType };
         msgs.push(msg);
-        setTimeout(() => { let un = msgs.filter(m => m.senderId === MY && m.status === 'unread'); if (un.length) { un[un.length - 1].status = 'read'; render(); saveAllData(); } }, 1800);
+        appendMessage(msg);
+        setTimeout(() => { 
+            let un = msgs.filter(m => m.senderId === MY && m.status === 'unread'); 
+            if (un.length) { 
+                const targetMsg = un[un.length - 1];
+                targetMsg.status = 'read'; 
+                updateMsgStatusInDOM(targetMsg.id, 'read');
+                saveAllData(); 
+            } 
+        }, 1800);
         quoteMsg = null;
         mi.value = '';
         mi.focus();
         setTimeout(() => { mi.value = ''; isSending = false; }, 50);
-        updQBar(); render(); simReply(); saveAllData();
+        updQBar(); 
+        simReply(); 
+        saveAllData();
     }
 
     function del(id) {
@@ -747,7 +829,11 @@
         msgs.forEach(m => { if (m.quoteId === id) { m.quoteId = null; m.quoteText = null } });
         msgs.splice(i, 1);
         if (quoteMsg && quoteMsg.id === id) quoteMsg = null;
-        render(); updQBar(); saveAllData();
+        const el = ma.querySelector(`.mr[data-mid="${id}"]`);
+        if (el) el.remove();
+        else render();
+        updQBar(); 
+        saveAllData();
     }
 
     snd.onclick = () => {
@@ -970,12 +1056,19 @@
         isSending = true;
         let msg = { id: nid++, senderId: MY, text: q, qaOptA: a, qaOptB: b, timestamp: Date.now(), status: 'unread', msgType: 'qa' };
         msgs.push(msg);
+        appendMessage(msg);
         setTimeout(() => {
             let un = msgs.filter(m => m.senderId === MY && m.status === 'unread');
-            if (un.length) { un[un.length - 1].status = 'read'; render(); saveAllData(); }
+            if (un.length) { 
+                const targetMsg = un[un.length - 1];
+                targetMsg.status = 'read'; 
+                updateMsgStatusInDOM(targetMsg.id, 'read');
+                saveAllData(); 
+            }
         }, 1800);
         quoteMsg = null;
-        updQBar(); render(); saveAllData();
+        updQBar(); 
+        saveAllData();
         setTimeout(() => { isSending = false; }, 50);
 
         const qaItem = { msg, q, a, b };
@@ -1064,6 +1157,12 @@
     let keepAliveId = null;
     let wakeLockSentinel = null;
 
+    function tryPlayWakeLockVideo() {
+        if (window.wakeLockVideo && window.wakeLockVideo.paused) {
+            window.wakeLockVideo.play().catch(e => {});
+        }
+    }
+
     async function requestWakeLock() {
         try {
             if ('wakeLock' in navigator && navigator.wakeLock.request) {
@@ -1083,8 +1182,36 @@
             window.wakeLockVideo.src = 'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAAAG21kYXQAAAGzABAHAAABthAAABsQAAAAMY/36wAAAu5tb292AAAAbG12aGQAAAAA/87i5//O4ucAAAEAAAMAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAwB0cmFrAAAAXHRraGQAAAAD/87i5//O4ucAAAABAAAAAAADAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAGFtZGlhAAAAIG1kaGQAAAAA/87i5//O4ucAAAEAAAAFAAAAAAAAAAAAMWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABn21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAVVzdGJsAAAAr3N0c2QAAAAAAAAAAQAAAJ9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAgACABIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAMWF2Y0MBQAAH/+EAFWdAAAcabmv4eAEBAwIQAAADAEAAAA8BAg8C8AAAhgAAO9UAAAAAGHN0dHMAAAAAAAAAAQAAAAEAAAABAAAAKHN0c3oAAAAAAAAAAQAAABMAAAAcc3RzYwAAAAAAAAABAAAAAQAAAAEAAAABAAAAFHN0Y28AAAAAAAAAAQAAADAAAAAcc3RzcwAAAAAAAAABAAAAAQAAABRzdHRzAAAAAAAAAAEAAAABAAAAAQ==';
             document.body.appendChild(window.wakeLockVideo);
         }
-        window.wakeLockVideo.play().catch(e => {});
+        const p = window.wakeLockVideo.play();
+        if (p && typeof p.catch === 'function') {
+            p.catch(e => {
+                // 如果在某些 WebView / 浏览器中因无用户手势导致自动播放失败，等待首次用户交互后立即重新播放
+                const resumeOnUserGesture = () => {
+                    if (keepAliveId || (keepAliveToggle && keepAliveToggle.checked)) {
+                        tryPlayWakeLockVideo();
+                        if (!wakeLockSentinel && 'wakeLock' in navigator && navigator.wakeLock.request) {
+                            navigator.wakeLock.request('screen').then(s => {
+                                wakeLockSentinel = s;
+                                s.addEventListener('release', () => { wakeLockSentinel = null; });
+                            }).catch(() => {});
+                        }
+                    }
+                };
+                ['click', 'touchstart', 'touchend', 'keydown'].forEach(evt => {
+                    document.addEventListener(evt, resumeOnUserGesture, { once: true, passive: true });
+                });
+            });
+        }
     }
+
+    // 全局用户交互监听，确保用户触摸屏幕后立即激活可能被拦截的视频保活
+    ['click', 'touchstart', 'keydown'].forEach(evt => {
+        document.addEventListener(evt, () => {
+            if (keepAliveId || (keepAliveToggle && keepAliveToggle.checked)) {
+                tryPlayWakeLockVideo();
+            }
+        }, { passive: true });
+    });
 
     function releaseWakeLock() {
         if (wakeLockSentinel) {
@@ -1263,26 +1390,32 @@
         callWindow.style.left = '50%'; callWindow.style.top = '50%'; callWindow.style.transform = 'translate(-50%,-50%)';
         callTimer.textContent = '00:00:00'; cmiTime.textContent = '00:00:00'; callMin.textContent = '—';
         callTimerId = setInterval(updateCallUI, 1000);
-        if (!fromSystem) { msgs.push({ id:nid++, senderId:SYS, text:'通话开始', timestamp:Date.now() }); render(); saveAllData(); }
-        render();
+        if (!fromSystem) { 
+            const startMsg = { id:nid++, senderId:SYS, text:'通话开始', timestamp:Date.now() };
+            msgs.push(startMsg); 
+            appendMessage(startMsg); 
+            saveAllData(); 
+        }
     }
     function endCall() {
         if (!inCall && !incomingWaiting && !isDialing) return;
         clearInterval(callTimerId); callTimerId = null;
         clearDialTimer();
+        let endMsg = null;
         if (inCall) {
             let elapsed = Math.floor((Date.now()-callStartTime)/1000);
-            msgs.push({ id:nid++, senderId:SYS, text:`通话结束，时长 ${formatTime(elapsed)}`, timestamp:Date.now() });
-            saveAllData(); render();
+            endMsg = { id:nid++, senderId:SYS, text:`通话结束，时长 ${formatTime(elapsed)}`, timestamp:Date.now() };
         } else if (incomingWaiting) {
-            msgs.push({ id:nid++, senderId:SYS, text:'未接来电', timestamp:Date.now() });
-            saveAllData();
+            endMsg = { id:nid++, senderId:SYS, text:'未接来电', timestamp:Date.now() };
         } else if (isDialing) {
-            msgs.push({ id:nid++, senderId:SYS, text:'对方未接听', timestamp:Date.now() });
+            endMsg = { id:nid++, senderId:SYS, text:'对方未接听', timestamp:Date.now() };
+        }
+        if (endMsg) {
+            msgs.push(endMsg); 
+            appendMessage(endMsg); 
             saveAllData();
         }
         callWindow.style.display = 'none'; inCall = false; callMinimized = false; incomingWaiting = false; isDialing = false;
-        render();
     }
     function incomingCall() {
         if (inCall || incomingWaiting || isDialing) return;
@@ -1426,7 +1559,8 @@
                 if (targetMsgs) {
                     customConfirm('导入将替换当前聊天记录，确定继续吗？', () => {
                         msgs = targetMsgs;
-                        nid = Math.max(...msgs.map(m => m.id),0)+1;
+                        nid = msgs.reduce((max, m) => Math.max(max, (m && m.id) ?? 0), 0) + 1;
+                        visibleMsgLimit = 80;
                         render(); renderHist(); saveAllData();
                         customAlert('聊天记录导入成功');
                     });

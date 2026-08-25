@@ -8,7 +8,6 @@
     let isQaReplying = false, qaQueue = [], currentQaTimer = null;
     let textCards = [], emojiCards = [], imageCards = [], statusCards = [], groups = [{ id: 'default', name: '未分组', color: '#90943f' }], chatStickers = [];
     let currentTab = 'text', currentGroupFilter = 'default';
-    let groupBarCollapsed = false;
     const contactStatusEl = Q('contactStatus');
     let currentStatusText = '在线';
     let isSending = false;
@@ -18,7 +17,7 @@
     const hp = Q('hp'), hpBack = Q('hpBack'), historySearch = Q('historySearch'), historyDate = Q('historyDate'), jumpDateBtn = Q('jumpDateBtn'), clearDateFilter = Q('clearDateFilter'), exportHistoryBtn = Q('exportHistoryBtn'), importHistoryBtn = Q('importHistoryBtn'), historyJSONInput = Q('historyJSONInput'), historyList = Q('historyList');
     const clearAllHistoryBtn = Q('clearAllHistoryBtn');
     const kp = Q('kp'), kpBack = Q('kpBack'), keepAliveToggle = Q('keepAliveToggle'), nightModeToggle = Q('nightModeToggle');
-    const defTheme = { bodyBg: '#6B6058', mainBg: '#EFE9E3', headerBg: '#9B8E82', btnBg: '#C4B9AC', inputBg: '#BEB2A5', myBubble: '#E4D9CD', contactBubble: '#F7F2EC', accent: '#887B6E', fontSize: 16 };
+    const defTheme = { bodyBg: '#939E66', mainBg: '#D4D7C2', headerBg: '#AAB185', btnBg: '#BEC5A3', inputBg: '#BEC5A3', myBubble: '#F1F1EB', contactBubble: '#F7F2EC', accent: '#586840', fontSize: 16 };
     const nightTheme = { bodyBg: '#2E2A27', mainBg: '#3E3935', headerBg: '#504842', btnBg: '#5E544C', inputBg: '#554D46', myBubble: '#585049', contactBubble: '#4D4640', accent: '#7D7165', fontSize: 16 };
     let isNight = localStorage.getItem('nightMode') === 'true';
     const imgBtn = Q('imgBtn'), chatImageInput = Q('chatImageInput');
@@ -28,6 +27,37 @@
     const sentTab = document.querySelector('.mailbox-tab[data-mtab="sent"]'), inboxTab = document.querySelector('.mailbox-tab[data-mtab="inbox"]');
     const writeLetterBtn = Q('writeLetterBtn'), letterEditArea = Q('letterEditArea'), letterContent = Q('letterContent'), sendLetterBtn = Q('sendLetterBtn'), cancelLetterBtn = Q('cancelLetterBtn'), letterList = Q('letterList');
     let letters = [], mailboxTab = 'sent';
+
+    function downloadOrShare(blob, filename) {
+        if (navigator.share) {
+            try {
+                const file = new File([blob], filename, { type: blob.type });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    navigator.share({
+                        files: [file],
+                        title: filename
+                    }).catch(e => {
+                        if (e.name !== 'AbortError') fallbackDownload(blob, filename);
+                    });
+                    return;
+                }
+            } catch (err) {
+                console.error('Share API error:', err);
+            }
+        }
+        fallbackDownload(blob, filename);
+    }
+    
+    function fallbackDownload(blob, filename) {
+        const a = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
 
     /* ---------- 自定义弹窗系统 ---------- */
     const customModalOverlay = Q('customModalOverlay');
@@ -1155,7 +1185,7 @@
     document.querySelectorAll('.hex-input').forEach(inp => { inp.addEventListener('input', function() { const target = document.getElementById(this.dataset.target); const val = this.value.trim(); if (/^#[0-9a-fA-F]{6}$/.test(val)) { target.value = val } }); inp.addEventListener('change', function() { const target = document.getElementById(this.dataset.target); if (!/^#[0-9a-fA-F]{6}$/.test(this.value.trim())) { this.value = target.value } }) });
     document.querySelectorAll('input[type="color"]').forEach(inp => { inp.addEventListener('input', function() { syncHex(this) }) });
     function setThemeInputs(theme) { bodyBgColor.value = theme.bodyBg; mainBgColor.value = theme.mainBg; headerBgColor.value = theme.headerBg; btnBgColor.value = theme.btnBg; inputBgColor.value = theme.inputBg; myBubbleBgColor.value = theme.myBubble; contactBubbleBgColor.value = theme.contactBubble; accentColor.value = theme.accent; fontSizeSlider.value = theme.fontSize; fontSizeValue.textContent = theme.fontSize + 'px'; document.querySelectorAll('.hex-input').forEach(inp => { const target = document.getElementById(inp.dataset.target); if (target) inp.value = target.value }); }
-    function loadTheme() { if (isNight) { setThemeInputs(nightTheme); applyTheme(); return; } const saved = JSON.parse(localStorage.getItem('chatTheme') || '{}'); const theme = { bodyBg: saved.bodyBg || defTheme.bodyBg, mainBg: saved.mainBg || defTheme.mainBg, headerBg: saved.headerBg || defTheme.headerBg, btnBg: saved.btnBg || defTheme.btnBg, inputBg: saved.inputBg || defTheme.inputBg, myBubble: saved.myBubble || defTheme.myBubble, contactBubble: saved.contactBubble || defTheme.contactBubble, accent: saved.accent || defTheme.accent, fontSize: saved.fontSize || defTheme.fontSize }; setThemeInputs(theme); applyTheme(); }
+    function loadTheme() { if (isNight) { setThemeInputs(nightTheme); applyTheme(); return; } const saved = JSON.parse(localStorage.getItem('chatTheme') || '{}'); let theme = { bodyBg: saved.bodyBg || defTheme.bodyBg, mainBg: saved.mainBg || defTheme.mainBg, headerBg: saved.headerBg || defTheme.headerBg, btnBg: saved.btnBg || defTheme.btnBg, inputBg: saved.inputBg || defTheme.inputBg, myBubble: saved.myBubble || defTheme.myBubble, contactBubble: saved.contactBubble || defTheme.contactBubble, accent: saved.accent || defTheme.accent, fontSize: saved.fontSize || defTheme.fontSize }; if (saved.bodyBg?.toUpperCase() === '#6B6058' && saved.mainBg?.toUpperCase() === '#EFE9E3') { theme = { ...defTheme, fontSize: saved.fontSize || defTheme.fontSize }; } setThemeInputs(theme); applyTheme(); }
     function applyTheme() {
         let bodyBg = bodyBgColor.value, mainBg = mainBgColor.value, headerBg = headerBgColor.value, btnBg = btnBgColor.value, inputBg = inputBgColor.value, myBubble = myBubbleBgColor.value, contactBubble = contactBubbleBgColor.value, accent = accentColor.value, fontSize = parseInt(fontSizeSlider.value);
         if (isNight) { bodyBg = nightTheme.bodyBg; mainBg = nightTheme.mainBg; headerBg = nightTheme.headerBg; btnBg = nightTheme.btnBg; inputBg = nightTheme.inputBg; myBubble = nightTheme.myBubble; contactBubble = nightTheme.contactBubble; accent = nightTheme.accent; }
@@ -1167,7 +1197,8 @@
         let txtFull = `${txt?`.c,.cn,.st,.si,.pt,.sl,.ir label,.mb,.mi,.tab,.btn,.group-tag,.card-content,.ab,.new-group-btn,.circle-btn,.call-btn,.img-btn,.sticker-btn,.rapid-reply-btn,.ext-toggle-btn,.ext-icon,.bb,.qbt,.message-time,.setting-label,.search-box,.color-row span,.history-msg .meta,.history-msg .preview,.bf,.tr label,.sr span,.font-slider span,.kp .sg div,.import-area div,.eh,.kp .sg div span,.storage-text,.sticker-panel .add-sticker-btn,.msg-system,.mailbox-tab,.group-export-btn,.group-toggle-btn{color:${txt}!important}.mi::placeholder,.search-box::placeholder,textarea::placeholder{color:${txt}99}.qp,.qt{color:${txt}cc!important}.eh{color:${txt}88!important}`:''}`;
         let avatarExtra = `.av{background:${mainBg}!important}.call-avatar{background:${mainBg}!important}`;
         let callExtra = `.call-header{background:${headerBg}!important}.call-window{background:${mainBg}!important}.call-minimized-bar{background:${headerBg}!important}`;
-        style.textContent = `body{background:${bodyBg}!important}.c,.ma,.sp,.wp,.tp,.hp,.kp,.mp{background:${mainBg}!important}.h{background:${headerBg}!important}.ia{background:${inputBg}!important}.btn,.circle-btn,.au,.new-group-btn,.snd,.call-btn,.img-btn,.sticker-btn,.rapid-reply-btn,.ext-toggle-btn,.ext-icon,.ap,#applyThemeBtn,.group-export-btn,.group-toggle-btn{background:${btnBg}!important}.btn:hover,.circle-btn:hover,.au:hover,.new-group-btn:hover,.snd:hover,.call-btn:hover,.img-btn:hover,.sticker-btn:hover,.rapid-reply-btn:hover,.ext-toggle-btn:hover,.ext-icon:hover,.ap:hover,#applyThemeBtn:hover,.group-export-btn:hover,.group-toggle-btn:hover{filter:brightness(0.85)!important}.tab,.mailbox-tab{background:${btnBg}90}.tab.active,.mailbox-tab.active{background:${accent}!important}.group-tag{background:${btnBg}70}.mb{background:${contactBubble}!important}.r .mb{background:${myBubble}!important}${txtFull}${nightExtra}${avatarExtra}${callExtra}.c .cn,.c .st,.c .si,.c .pt,.c .sl,.c .ir label,.c .mb,.c .mi,.c .tab,.c .btn,.c .group-tag,.c .card-content,.c .ab,.c .new-group-btn,.c .circle-btn,.c .call-btn,.c .img-btn,.c .sticker-btn,.c .rapid-reply-btn,.c .ext-toggle-btn,.c .ext-icon,.c .bb,.c .qbt,.c .message-time,.c .setting-label,.c .search-box,.c .mailbox-tab,.c .group-export-btn,.c .group-toggle-btn{font-size:${fontSize}px!important}`
+        let scrollbarExtra = `::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-thumb{background:${btnBg};border-radius:8px}::-webkit-scrollbar-track{background:transparent}`;
+        style.textContent = `body{background:${bodyBg}!important}.c,.ma,.sp,.wp,.tp,.hp,.kp,.mp{background:${mainBg}!important}.h{background:${headerBg}!important}.ia{background:${inputBg}!important}.btn,.circle-btn,.au,.new-group-btn,.snd,.call-btn,.img-btn,.sticker-btn,.rapid-reply-btn,.ext-toggle-btn,.ext-icon,.ap,#applyThemeBtn,.group-export-btn,.group-toggle-btn{background:${btnBg}!important}.btn:hover,.circle-btn:hover,.au:hover,.new-group-btn:hover,.snd:hover,.call-btn:hover,.img-btn:hover,.sticker-btn:hover,.rapid-reply-btn:hover,.ext-toggle-btn:hover,.ext-icon:hover,.ap:hover,#applyThemeBtn:hover,.group-export-btn:hover,.group-toggle-btn:hover{filter:brightness(0.85)!important}.tab,.mailbox-tab{background:${btnBg}90}.tab.active,.mailbox-tab.active{background:${accent}!important}.group-tag{background:${btnBg}70}.mb{background:${contactBubble}!important}.r .mb{background:${myBubble}!important}${txtFull}${nightExtra}${avatarExtra}${callExtra}${scrollbarExtra}.c .cn,.c .st,.c .si,.c .pt,.c .sl,.c .ir label,.c .mb,.c .mi,.c .tab,.c .btn,.c .group-tag,.c .card-content,.c .ab,.c .new-group-btn,.c .circle-btn,.c .call-btn,.c .img-btn,.c .sticker-btn,.c .rapid-reply-btn,.c .ext-toggle-btn,.c .ext-icon,.c .bb,.c .qbt,.c .message-time,.c .setting-label,.c .search-box,.c .mailbox-tab,.c .group-export-btn,.c .group-toggle-btn{font-size:${fontSize}px!important}`
     }
     fontSizeSlider.oninput = () => { fontSizeValue.textContent = fontSizeSlider.value + 'px' };
     applyThemeBtn.onclick = () => { if (isNight) { isNight = false; localStorage.setItem('nightMode', 'false'); updateNightUI(); } applyTheme(); tp.classList.remove('show') };
@@ -1280,6 +1311,12 @@
         callWindow.style.transform = 'none';
         dragInfo = { x: clientX - rect.left, y: clientY - rect.top };
         if (e.touches && e.cancelable) e.preventDefault();
+
+        document.addEventListener('mousemove', onDrag);
+        document.addEventListener('touchmove', onDrag, { passive: false });
+        document.addEventListener('mouseup', endDrag);
+        document.addEventListener('touchend', endDrag);
+        document.addEventListener('touchcancel', endDrag);
     }
     function onDrag(e) {
         if (!dragInfo) return;
@@ -1288,17 +1325,20 @@
         callWindow.style.left = (clientX - dragInfo.x) + 'px';
         callWindow.style.top = (clientY - dragInfo.y) + 'px';
         callWindow.style.transform = 'none';
-        if (e.touches) e.preventDefault();
+        if (e.touches && e.cancelable) e.preventDefault();
     }
-    function endDrag() { dragInfo = null; }
+    function endDrag() {
+        dragInfo = null;
+        document.removeEventListener('mousemove', onDrag);
+        document.removeEventListener('touchmove', onDrag);
+        document.removeEventListener('mouseup', endDrag);
+        document.removeEventListener('touchend', endDrag);
+        document.removeEventListener('touchcancel', endDrag);
+    }
     callHeader.addEventListener('mousedown', startDrag);
     callHeader.addEventListener('touchstart', startDrag, { passive: false });
     cmiBar.addEventListener('mousedown', startDrag);
     cmiBar.addEventListener('touchstart', startDrag, { passive: false });
-    document.addEventListener('mousemove', onDrag);
-    document.addEventListener('touchmove', onDrag, { passive: false });
-    document.addEventListener('mouseup', endDrag);
-    document.addEventListener('touchend', endDrag);
 
     let incomingCallTimer = null;
     function scheduleIncomingCall() {
@@ -1336,12 +1376,7 @@
     exportHistoryBtn.onclick = () => { 
         const dataStr = JSON.stringify(msgs, null, 2); 
         const blob = new Blob([dataStr], { type:'application/json' }); 
-        const a = document.createElement('a'); 
-        const url = URL.createObjectURL(blob);
-        a.href = url; 
-        a.download = 'chat_history.json'; 
-        a.click(); 
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        downloadOrShare(blob, 'chat_history.json');
     };
 
     importHistoryBtn.onclick = () => historyJSONInput.click();
@@ -1384,7 +1419,9 @@
     };
 
     function renderGroupBar() {
-        if (currentTab !== 'text') { groupBar.style.display = 'none'; return }
+        const newGrpBtn = document.getElementById('newGroupBtn');
+        if (currentTab !== 'text') { groupBar.style.display = 'none'; if(newGrpBtn) newGrpBtn.style.display = 'none'; return; }
+        if (newGrpBtn) newGrpBtn.style.display = 'inline-flex';
         groupBar.style.display = 'flex';
         const rightArrowSvg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><polyline points="9 18 15 12 9 6"/></svg>`;
         const editSvg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`;
@@ -1393,14 +1430,10 @@
         const exportSvg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`;
         const upArrowSvg = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><polyline points="18 15 12 9 6 15"/></svg>`;
 
-        if (groupBarCollapsed) { groupBar.innerHTML = `<button class="group-toggle-btn" id="expandGroupBtn">${rightArrowSvg} 展开分组</button>`; document.getElementById('expandGroupBtn').addEventListener('click', () => { groupBarCollapsed = false; renderWB(); }); return; }
         let h = groups.map(g => {
             let isActive = currentGroupFilter === g.id;
             return `<div class="group-tag ${isActive?'active':''}" data-group-id="${g.id}" style="border-color:${g.color}"><span class="group-color" style="background:${g.color}"></span>${g.name}<button class="group-edit-btn" data-edit-group="${g.id}">${editSvg}</button>${g.id!=='default'?`<button class="group-edit-btn" data-del-group="${g.id}">${closeSvg}</button>`:''}</div>`;
         }).join('');
-        h += `<button class="new-group-btn" id="newGroupBtn">${plusSvg} 新建</button>`;
-        if (currentGroupFilter !== 'all') h += `<button class="group-export-btn" id="exportGroupBtn">${exportSvg} 导出"${groups.find(g=>g.id===currentGroupFilter)?.name||'当前分组'}"</button>`;
-        h += `<button class="group-toggle-btn" id="collapseGroupBtn" style="margin-left:4px">${upArrowSvg} 收起</button>`;
         groupBar.innerHTML = h;
         document.querySelectorAll('.group-tag').forEach(el => { el.addEventListener('click', e => { if (!e.target.closest('button')) { currentGroupFilter = el.dataset.groupId; renderWB() } }) });
         document.querySelectorAll('[data-edit-group]').forEach(b => b.onclick = e => {
@@ -1424,18 +1457,6 @@
                 renderWB(); saveAllData();
             });
         });
-        document.getElementById('newGroupBtn')?.addEventListener('click', () => {
-            customPrompt('请输入分组名称', '新分组', (name) => {
-                if (name && name.trim()) {
-                    customPrompt('颜色代码 (可选)', '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0'), (color) => {
-                        groups.push({ id: Date.now()+'-'+Math.random(), name: name.trim(), color: color||'#90943f' });
-                        renderWB(); saveAllData();
-                    });
-                }
-            });
-        });
-        document.getElementById('exportGroupBtn')?.addEventListener('click', () => { exportGroupJSON(currentGroupFilter); });
-        document.getElementById('collapseGroupBtn')?.addEventListener('click', () => { groupBarCollapsed = true; renderWB(); });
     }
 
     /* 修复 ⑦: 释放 Blob URL 避免内存泄漏 (导出分组字卡) */
@@ -1445,12 +1466,7 @@
         let filteredTextCards = textCards.filter(c => c.groupId === groupId);
         let data = { text: filteredTextCards, emoji: emojiCards, image: imageCards, status: statusCards, groups, exportGroupId: groupId, exportGroupName: group.name };
         let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        let a = document.createElement('a'); 
-        const url = URL.createObjectURL(blob);
-        a.href = url; 
-        a.download = 'wordbank_' + group.name + '.json'; 
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        downloadOrShare(blob, 'wordbank_' + group.name + '.json');
     }
 
     function getCardListArray() { if (currentTab === 'text') return textCards; if (currentTab === 'emoji') return emojiCards; if (currentTab === 'image') return imageCards; if (currentTab === 'status') return statusCards; return []; }
@@ -1500,6 +1516,16 @@
     }
     wbImportText.onclick = () => { if (currentTab === 'image') { imgUploadInput.click() } else { importArea.style.display = 'block'; importTextArea.value = ''; importTextArea.placeholder = currentTab==='text'?'每行一条主字卡':currentTab==='emoji'?'每行一条Emoji':currentTab==='status'?'每行一条状态':'每行一条' } };
     wbUploadImg.onclick = () => imgUploadInput.click();
+    document.getElementById('newGroupBtn')?.addEventListener('click', () => {
+        customPrompt('请输入分组名称', '新分组', (name) => {
+            if (name && name.trim()) {
+                customPrompt('颜色代码 (可选)', '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0'), (color) => {
+                    groups.push({ id: Date.now()+'-'+Math.random(), name: name.trim(), color: color||'#90943f' });
+                    renderWB(); saveAllData();
+                });
+            }
+        });
+    });
 
     function handleImportConfirm(e) {
         e.preventDefault();
@@ -1535,12 +1561,7 @@
     function exportAllJSON() { 
         let data = { text: textCards, emoji: emojiCards, image: imageCards, status: statusCards, groups }; 
         let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); 
-        let a = document.createElement('a'); 
-        const url = URL.createObjectURL(blob);
-        a.href = url; 
-        a.download = 'wordbank.json'; 
-        a.click(); 
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        downloadOrShare(blob, 'wordbank.json');
     }
 
     wbImportJSON.onclick = () => jsonUploadInput.click();

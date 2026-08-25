@@ -51,7 +51,7 @@
                 <span class="storageWarningText">存储空间接近上限，建议清理或导出备份</span>
             </div>
         </div>
-        <button id="ap" style="background:#887B6E;border:none;border-radius:30px;padding:14px;color:#F7F2EC;font-weight:bold">应用设置</button>
+        <button class="ap" id="ap" style="border:none;border-radius:30px;padding:14px;color:#F7F2EC;font-weight:bold">应用设置</button>
     </div>
     <div class="wp" id="wp">
         <div class="ph"><button class="bb" id="wbBack"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button><span class="pt">字卡库</span></div>
@@ -63,7 +63,7 @@
             <div class="tab" data-tab="status">状态</div>
         </div>
         <div class="action-bar">
-            <div class="left-actions"><button class="circle-btn" id="wbImportText" title="导入文本"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button><button class="circle-btn" id="wbUploadImg" title="上传图片"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></button></div>
+            <div class="left-actions"><button class="circle-btn" id="wbImportText" title="导入文本"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button><button class="circle-btn" id="wbUploadImg" title="上传图片"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></button><button class="new-group-btn" id="newGroupBtn" style="display:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 新建</button></div>
             <div class="right-actions"><button class="btn" id="wbExport"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> 导出</button><button class="btn" id="wbImportJSON"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> 导入</button></div>
         </div>
         <div class="import-area" id="importArea" style="display:none"><textarea id="importTextArea" rows="4" placeholder="每行一条..."></textarea><div style="display:flex;gap:8px;margin-top:8px"><button class="btn" id="confirmImport">确认导入</button><button class="btn" id="cancelImport">取消</button></div></div>
@@ -90,7 +90,7 @@
             <div class="font-slider"><span>12px</span><input type="range" id="fontSizeSlider" min="12" max="20" value="16"><span>20px</span></div>
             <div style="text-align:center;margin-top:5px"><span id="fontSizeValue">16px</span></div>
         </div>
-        <div style="display:flex;gap:10px;margin-top:10px"><button id="applyThemeBtn" style="background:#887B6E;border:none;border-radius:30px;padding:14px;color:#F7F2EC;font-weight:bold;flex:2;cursor:pointer">应用主题</button><button id="resetThemeBtn" style="background:#C4B9AC;border:none;border-radius:30px;padding:14px;color:#1E2C0E;font-weight:bold;flex:1;cursor:pointer">恢复默认</button></div>
+        <div style="display:flex;gap:10px;margin-top:10px"><button id="applyThemeBtn" style="border:none;border-radius:30px;padding:14px;color:#F7F2EC;font-weight:bold;flex:2;cursor:pointer">应用主题</button><button id="resetThemeBtn" style="background:#C4B9AC;border:none;border-radius:30px;padding:14px;color:#1E2C0E;font-weight:bold;flex:1;cursor:pointer">恢复默认</button></div>
     </div>
     <div class="hp" id="hp">
         <div class="ph"><button class="bb" id="hpBack"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button><span class="pt">聊天记录</span></div>
@@ -159,7 +159,7 @@
             </div>
             <div class="custom-modal-actions" id="customModalActions">
                 <button class="btn" id="customModalCancel">取消</button>
-                <button class="btn" id="customModalConfirm" style="background:#887B6E;color:#F7F2EC">确定</button>
+                <button class="btn" id="customModalConfirm" style="color:#F7F2EC">确定</button>
             </div>
         </div>
     </div>
@@ -180,7 +180,7 @@
             </div>
             <div class="qa-modal-actions">
                 <button class="btn" id="qaCancelBtn">取消</button>
-                <button class="btn" id="qaSubmitBtn" style="background:#887B6E;color:#F7F2EC">发送问答</button>
+                <button class="btn" id="qaSubmitBtn" style="color:#F7F2EC">发送问答</button>
             </div>
         </div>
     </div>

@@ -28,42 +28,83 @@
     const writeLetterBtn = Q('writeLetterBtn'), letterEditArea = Q('letterEditArea'), letterContent = Q('letterContent'), sendLetterBtn = Q('sendLetterBtn'), cancelLetterBtn = Q('cancelLetterBtn'), letterList = Q('letterList');
     let letters = [], mailboxTab = 'sent';
 
-    function downloadOrShare(blob, filename) {
+    function downloadOrShare(blob, filename, textContent) {
+        // 1. 尝试系统级原生文件分享（Android / iOS WebApp / APK 原生弹窗分享至文件管理器/微信等）
         if (navigator.share) {
             try {
-                const file = new File([blob], filename, { type: blob.type });
+                const file = new File([blob], filename, { type: blob.type || 'application/json' });
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
                     navigator.share({
                         files: [file],
                         title: filename
                     }).catch(e => {
                         if (e.name !== 'AbortError') {
-                            if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) customAlert('当前环境不支持下载');
-                            else fallbackDownload(blob, filename);
+                            fallbackDownload(blob, filename, textContent);
                         }
                     });
                     return;
                 }
             } catch (err) {
-                console.error('Share API error:', err);
+                console.warn('Share API error, fallback to download:', err);
             }
         }
-        if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-            customAlert('当前环境不支持下载');
-        } else {
-            fallbackDownload(blob, filename);
-        }
+        // 2. 触发常规 Blob 下载
+        fallbackDownload(blob, filename, textContent);
     }
     
-    function fallbackDownload(blob, filename) {
-        const a = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    function fallbackDownload(blob, filename, textContent) {
+        let downloadTriggered = false;
+        try {
+            const a = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            downloadTriggered = true;
+            setTimeout(() => URL.revokeObjectURL(url), 1500);
+        } catch (e) {
+            console.error('Download error:', e);
+        }
+        
+        // 针对部分对 Blob 文件写入有严格限制的低版本 Android WebView，同时提供复制到剪贴板备份提示
+        if (textContent && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+            customModal({
+                title: '导出成功',
+                message: `文件 ${filename} 已触发保存。如果您的手机应用未能自动保存文件，可点击下方按钮将数据直接复制到剪贴板。`,
+                confirmText: '复制到剪贴板',
+                cancelText: '已完成',
+                onConfirm: () => {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(textContent).then(() => {
+                            customAlert('已成功复制到剪贴板！');
+                        }).catch(() => {
+                            copyByTextarea(textContent);
+                        });
+                    } else {
+                        copyByTextarea(textContent);
+                    }
+                }
+            });
+        }
+    }
+
+    function copyByTextarea(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+            document.execCommand('copy');
+            customAlert('已成功复制到剪贴板！');
+        } catch (e) {
+            customAlert('复制失败，请重试');
+        }
+        document.body.removeChild(ta);
     }
 
     /* ---------- 自定义弹窗系统 ---------- */
@@ -1584,7 +1625,7 @@
     exportHistoryBtn.onclick = () => { 
         const dataStr = JSON.stringify(msgs, null, 2); 
         const blob = new Blob([dataStr], { type:'application/json' }); 
-        downloadOrShare(blob, 'chat_history.json');
+        downloadOrShare(blob, 'chat_history.json', dataStr);
     };
 
     importHistoryBtn.onclick = () => historyJSONInput.click();
@@ -1674,8 +1715,9 @@
         if (!group) return;
         let filteredTextCards = textCards.filter(c => c.groupId === groupId);
         let data = { text: filteredTextCards, emoji: emojiCards, image: imageCards, status: statusCards, groups, exportGroupId: groupId, exportGroupName: group.name };
-        let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        downloadOrShare(blob, 'wordbank_' + group.name + '.json');
+        let str = JSON.stringify(data, null, 2);
+        let blob = new Blob([str], { type: 'application/json' });
+        downloadOrShare(blob, 'wordbank_' + group.name + '.json', str);
     }
 
     function getCardListArray() { if (currentTab === 'text') return textCards; if (currentTab === 'emoji') return emojiCards; if (currentTab === 'image') return imageCards; if (currentTab === 'status') return statusCards; return []; }
@@ -1769,8 +1811,9 @@
     /* 修复 ⑦: 释放 Blob URL 避免内存泄漏 (导出全部字卡) */
     function exportAllJSON() { 
         let data = { text: textCards, emoji: emojiCards, image: imageCards, status: statusCards, groups }; 
-        let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); 
-        downloadOrShare(blob, 'wordbank.json');
+        let str = JSON.stringify(data, null, 2);
+        let blob = new Blob([str], { type: 'application/json' }); 
+        downloadOrShare(blob, 'wordbank.json', str);
     }
 
     wbImportJSON.onclick = () => jsonUploadInput.click();

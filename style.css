@@ -14,13 +14,27 @@ body { display:flex; align-items:center; justify-content:center; min-height:100v
     border:none; 
     transform:none; 
     box-shadow:none;
-    padding-top: env(safe-area-inset-top, 0px);
+    padding-top: 0;
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
 
-/* 统一顶部栏尺寸 (高度 56px, 内边距 8px 16px, 间距 8px) */
-.h { height:56px; min-height:56px; background:#AAB185; padding:8px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #BEC5A3; position:relative; z-index:10; flex-shrink:0 }
+/* 统一顶部栏尺寸 (固定高度 56px + 安全区内边距, 内容垂直居中) */
+.h { 
+  min-height: 56px;
+  height: calc(56px + env(safe-area-inset-top, 0px));
+  background: #AAB185; 
+  padding: 0 16px; 
+  padding-top: env(safe-area-inset-top, 0px);
+  display: flex; 
+  align-items: center; 
+  justify-content: space-between; 
+  border-bottom: 1px solid #BEC5A3; 
+  position: relative; 
+  z-index: 10; 
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
 .hi { display:flex; flex-direction:column; justify-content:center; line-height:1.2; min-width:0; flex:1; margin-right:8px; overflow:hidden }
 .cn { font-size:18px; font-weight:650; color:#1f2e0e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
 .os { display:flex; align-items:center; gap:8px; min-width:0 }
@@ -38,7 +52,7 @@ body { display:flex; align-items:center; justify-content:center; min-height:100v
 .si:last-child { border-bottom:none }
 .ic { width:24px; display:flex; align-items:center; justify-content:center }
 
-/* 子页面面板及统一顶部栏 (支持平滑向下滑动) */
+/* 子页面面板及统一顶部栏 (信箱与所有设置界面顶部栏统一尺寸与防遮挡) */
 .sp,.wp,.tp,.hp,.kp,.mp { 
   position:absolute; 
   top:0; 
@@ -53,23 +67,26 @@ body { display:flex; align-items:center; justify-content:center; min-height:100v
   -webkit-overflow-scrolling:touch; 
   touch-action:pan-y; 
   overscroll-behavior-y:contain; 
-  padding:0 16px 24px 16px 
+  padding:0 16px 24px 16px;
+  padding-bottom: max(24px, env(safe-area-inset-bottom, 24px));
 }
 .sp.show,.wp.show,.tp.show,.hp.show,.kp.show,.mp.show { display:flex }
 .ph { 
   position:sticky; 
   top:0; 
   z-index:30; 
-  height:56px; 
   min-height:56px; 
+  height: calc(56px + env(safe-area-inset-top, 0px));
   background:#AAB185; 
   margin:0 -16px 16px -16px; 
-  padding:8px 16px; 
+  padding:0 16px; 
+  padding-top: env(safe-area-inset-top, 0px);
   display:flex; 
   align-items:center; 
   gap:8px; 
   border-bottom:1px solid #BEC5A3; 
-  flex-shrink:0 
+  flex-shrink:0;
+  box-sizing: border-box;
 }
 .bb { background:0; border:none; cursor:pointer; color:#F4F9EB; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0 }
 .bb:hover { background:rgba(255,255,255,.15) }

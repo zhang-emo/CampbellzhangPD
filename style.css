@@ -94,9 +94,9 @@ input[type=range]::-moz-range-thumb { width:24px; height:24px; background:#887B6
 .av img { width:100%; height:100%; object-fit:cover }
 .r .av { background:#D4D7C2; border-color:#D4D7C2 }
 .bw { max-width:75%; display:flex; flex-direction:column }
-.qp { background:rgba(196,185,172,.5); border-left:4px solid #887B6E; padding:6px 10px; margin-bottom:4px; border-radius:10px 10px 4px 10px; font-size:13px; color:#1e2f0e; display:flex; align-items:center; justify-content:space-between; cursor:pointer }
-.qp:hover { background:rgba(136,123,110,.4) }
-.qt { opacity:.85; font-style:italic; max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none }
+.qp { background:rgba(196,185,172,.55); border-left:3.5px solid #887B6E; padding:5px 10px; margin-bottom:4px; border-radius:10px; font-size:12.5px; color:#1e2f0e; display:flex; align-items:center; cursor:pointer; max-width:100%; box-sizing:border-box; transition:background .15s }
+.qp:hover { background:rgba(136,123,110,.45) }
+.qt { opacity:.9; font-style:normal; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; display:flex; align-items:center }
 .mb { background:#F7F2EC; padding:10px 14px; border-radius:20px 20px 20px 6px; border:1px solid #BEC5A3; color:#1E2C0E; font-size:14px; line-height:1.45; word-break:break-word; cursor:pointer }
 .r .mb { background:#F1F1EB; border-radius:20px 20px 6px 20px; border-color:#BEC5A3 }
 .mb.img-bubble { padding:4px; background:transparent; border:none }

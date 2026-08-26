@@ -548,13 +548,17 @@
     }
 
     function maybeAttachQuote(msgObj) {
-        if (Math.random() < 0.3) {
-            const recent = msgs.slice(-10);
-            const textCandidates = recent.filter(m => (!m.msgType || m.msgType === 'text') && m.text);
-            if (textCandidates.length > 0) {
-                const picked = textCandidates[Math.floor(Math.random() * textCandidates.length)];
-                msgObj.quoteId = picked.id;
-                msgObj.quoteText = picked.text;
+        if (Math.random() < 0.35) {
+            // 对方自动回复时，优先引用用户发送的最近一条文本/图片消息
+            const myRecent = msgs.filter(m => m.senderId === MY && (m.text || m.msgType === 'image'));
+            if (myRecent.length > 0) {
+                // 优先挑选用户最近 1~3 条消息中的最新一条进行上下文回复
+                const candidates = myRecent.slice(-3);
+                const picked = candidates[candidates.length - 1];
+                if (picked) {
+                    msgObj.quoteId = picked.id;
+                    msgObj.quoteText = picked.msgType === 'image' ? '[图片]' : picked.text;
+                }
             }
         }
     }
@@ -725,10 +729,26 @@
             return `<div class="mr msg-system" data-mid="${m.id}"><span>${esc(m.text)}</span></div>`; 
         }
         let me = m.senderId === MY, row = me ? 'mr r' : 'mr l', av = me ? avHtml(myAv) : avHtml(ctAv);
-        const pinSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
-        let qText = m.quoteText || '';
-        let qSafe = qText.length > 30 ? qText.slice(0, 30) + '…' : qText;
-        let q = m.quoteId ? `<div class="qp" data-qid="${m.quoteId}"><span class="qt">${pinSvg}${esc(qSafe)}</span></div>` : '';
+        const pinSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;flex-shrink:0"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+        let q = '';
+        if (m.quoteId || m.quoteText) {
+            let origMsg = m.quoteId ? find(m.quoteId) : null;
+            let qText = '';
+            let qSender = '';
+            if (origMsg) {
+                qSender = origMsg.senderId === MY ? (myName || '我') : (ctName || 'Norton·Campbell');
+                if (origMsg.msgType === 'image') qText = '[图片]';
+                else if (origMsg.msgType === 'qa') qText = `问答: ${origMsg.text}`;
+                else qText = origMsg.text || '';
+            } else if (m.quoteText) {
+                qText = m.quoteText;
+            }
+            if (qText) {
+                let qSafe = qText.length > 25 ? qText.slice(0, 25) + '…' : qText;
+                let qLabel = qSender ? `${qSender}: ${qSafe}` : qSafe;
+                q = `<div class="qp" data-qid="${m.quoteId || ''}" title="点击跳转至原消息"><span class="qt">${pinSvg}${esc(qLabel)}</span></div>`;
+            }
+        }
         let d = new Date(m.timestamp), time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
         let stt = me ? (m.status === 'read' ? '<span class="rs sdc">✓✓</span>' : '<span class="rs sc">✓</span>') : '<span style="opacity:.4">·</span>';
         const replySvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`;
